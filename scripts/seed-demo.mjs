@@ -1,4 +1,4 @@
-// Loads the "Acme Nigeria Ltd" sample organization into ONE existing account.
+// Loads the "Rite Foods Nigeria" sample organization into ONE existing account.
 // Everyone else starts with an empty organization; this is only for demos.
 //
 //   node --env-file=.env.local scripts/seed-demo.mjs [email]
@@ -8,7 +8,7 @@
 // Running it twice does nothing the second time.
 
 const EMAIL = (process.argv[2] ?? "koredebusuyi.career@gmail.com").trim().toLowerCase()
-const ORG_NAME = "Acme Nigeria Ltd"
+const ORG_NAME = "Rite Foods Nigeria"
 const BASE = process.env.NEXT_PUBLIC_SUPABASE_URL
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -111,10 +111,10 @@ const TRANSACTIONS = [
 
 // Pending invitations so the People list shows every role. No emails are sent.
 const INVITES = [
-  { email: "tunde@acme.example", role: "finance", depts: [] },
-  { email: "chiamaka@acme.example", role: "dept_manager", depts: ["mkt"] },
-  { email: "ibrahim@acme.example", role: "dept_manager", depts: ["sls"] },
-  { email: "grace@acme.example", role: "viewer", depts: [] },
+  { email: "tunde@ritefoods.example", role: "finance", depts: [] },
+  { email: "chiamaka@ritefoods.example", role: "dept_manager", depts: ["mkt"] },
+  { email: "ibrahim@ritefoods.example", role: "dept_manager", depts: ["sls"] },
+  { email: "grace@ritefoods.example", role: "viewer", depts: [] },
 ]
 
 const addDays = (iso, days) => {
@@ -149,10 +149,10 @@ if (existing.length > 0) {
 
 const [org] = await insert("organizations", {
   name: ORG_NAME,
-  slug: `acme-nigeria-${Math.random().toString(36).slice(2, 6)}`,
+  slug: `rite-foods-${Math.random().toString(36).slice(2, 6)}`,
   currency: "NGN",
   fiscal_year_start: 1,
-  industry: "Consumer goods",
+  industry: "Food & beverages",
   created_by: user.id,
 })
 await insert("memberships", { org_id: org.id, user_id: user.id, role: "owner", status: "active", invited_by: user.id })

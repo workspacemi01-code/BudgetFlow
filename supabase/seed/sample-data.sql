@@ -1,12 +1,19 @@
 -- =============================================================================
 -- BudgetFlow — sample data for ONE account
--- Creates the "Acme Nigeria Ltd" organization (FY2026, 5 departments, 16 budget
+-- Creates the "Rite Foods Nigeria" organization (FY2026, 5 departments, 16 budget
 -- lines, 29 transactions with payments, 4 pending invites) owned by v_email.
 --
 -- Run in Supabase → SQL Editor. The account must already exist (sign up first).
--- Safe to run again: it stops if that account already has the sample org.
+-- Safe to run again. If the account already has the older "Acme Nigeria Ltd"
+-- sample org, it is renamed instead of duplicated.
 -- Every other account keeps starting with an empty organization.
 -- =============================================================================
+
+-- Server-side scripts (service role) need table access on newer Supabase projects.
+grant usage on schema public to authenticated, service_role;
+grant select, insert, update, delete on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
 
 do $$
 declare
@@ -20,14 +27,23 @@ begin
     raise exception 'No account for % yet — sign up in the app first, then run this again.', v_email;
   end if;
 
-  if exists (select 1 from public.organizations where created_by = v_user and name = 'Acme Nigeria Ltd') then
-    raise notice 'Sample data is already loaded for % — nothing to do.', v_email;
+  -- Already loaded (under either name)? Make sure it carries the current name, then stop.
+  select id into v_org
+  from public.organizations
+  where created_by = v_user and name in ('Acme Nigeria Ltd', 'Rite Foods Nigeria')
+  limit 1;
+  if v_org is not null then
+    update public.organizations set name = 'Rite Foods Nigeria' where id = v_org and name <> 'Rite Foods Nigeria';
+    update public.memberships
+    set invited_email = replace(invited_email, '@acme.example', '@ritefoods.example')
+    where org_id = v_org and invited_email like '%@acme.example';
+    raise notice 'Sample organization for % is now named Rite Foods Nigeria.', v_email;
     return;
   end if;
 
   -- Organization, owner membership, financial year ---------------------------
   insert into public.organizations (name, slug, currency, fiscal_year_start, industry, created_by)
-  values ('Acme Nigeria Ltd', 'acme-nigeria-' || substr(md5(random()::text), 1, 4), 'NGN', 1, 'Consumer goods', v_user)
+  values ('Rite Foods Nigeria', 'rite-foods-' || substr(md5(random()::text), 1, 4), 'NGN', 1, 'Food & beverages', v_user)
   returning id into v_org;
 
   insert into public.memberships (org_id, user_id, role, status, invited_by)
@@ -157,17 +173,17 @@ begin
 
   -- Pending invitations, so Settings → People shows every role (no emails are sent)
   insert into public.memberships (org_id, invited_email, role, status, invited_by) values
-    (v_org, 'tunde@acme.example',    'finance',      'pending', v_user),
-    (v_org, 'chiamaka@acme.example', 'dept_manager', 'pending', v_user),
-    (v_org, 'ibrahim@acme.example',  'dept_manager', 'pending', v_user),
-    (v_org, 'grace@acme.example',    'viewer',       'pending', v_user);
+    (v_org, 'tunde@ritefoods.example',    'finance',      'pending', v_user),
+    (v_org, 'chiamaka@ritefoods.example', 'dept_manager', 'pending', v_user),
+    (v_org, 'ibrahim@ritefoods.example',  'dept_manager', 'pending', v_user),
+    (v_org, 'grace@ritefoods.example',    'viewer',       'pending', v_user);
 
   insert into public.membership_departments (membership_id, department_id, org_id)
   select m.id, d.id, v_org
-  from (values ('chiamaka@acme.example', 'MKT'), ('ibrahim@acme.example', 'SLS')) as x(email, code)
+  from (values ('chiamaka@ritefoods.example', 'MKT'), ('ibrahim@ritefoods.example', 'SLS')) as x(email, code)
   join public.memberships m on m.org_id = v_org and m.invited_email = x.email
   join public.departments d on d.org_id = v_org and d.code = x.code;
 
-  raise notice 'Loaded Acme Nigeria Ltd sample data for %.', v_email;
+  raise notice 'Loaded Rite Foods Nigeria sample data for %.', v_email;
 end;
 $$;
