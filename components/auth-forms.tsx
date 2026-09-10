@@ -1,17 +1,31 @@
 "use client"
 
+import Link from "next/link"
 import { useActionState } from "react"
 import { MailCheck } from "lucide-react"
 
-import { signIn, signUp } from "@/app/actions/auth"
+import { requestPasswordReset, signIn, signUp, updatePassword } from "@/app/actions/auth"
 import { createOrganization } from "@/app/actions/org"
 import { Field, controlClass } from "@/components/field"
+import { PasswordInput } from "@/components/password-input"
 import { FormMessage, SubmitButton } from "@/components/submit-button"
 import { Input } from "@/components/ui/input"
 import { CURRENCIES } from "@/lib/format"
 import type { FormState } from "@/lib/types"
 
 const initial: FormState = {}
+
+function CheckEmail({ email, children }: { email: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3 text-center">
+      <MailCheck className="mx-auto size-10 text-primary" />
+      <h2 className="text-lg font-semibold">Check your email</h2>
+      <p className="text-sm text-muted-foreground">
+        We sent a link to <span className="font-medium text-foreground">{email}</span>. {children}
+      </p>
+    </div>
+  )
+}
 
 export function LoginForm({ next }: { next?: string }) {
   const [state, action] = useActionState(signIn, initial)
@@ -21,9 +35,14 @@ export function LoginForm({ next }: { next?: string }) {
       <Field label="Work email" htmlFor="email">
         <Input id="email" name="email" type="email" autoComplete="email" required className="h-11" />
       </Field>
-      <Field label="Password" htmlFor="password">
-        <Input id="password" name="password" type="password" autoComplete="current-password" required className="h-11" />
-      </Field>
+      <div className="grid gap-1.5">
+        <Field label="Password" htmlFor="password">
+          <PasswordInput id="password" name="password" autoComplete="current-password" required />
+        </Field>
+        <Link href="/forgot-password" className="justify-self-end text-xs font-medium text-primary hover:underline">
+          Forgot password?
+        </Link>
+      </div>
       <FormMessage error={state.error} />
       <SubmitButton pendingLabel="Signing in…">Sign in</SubmitButton>
     </form>
@@ -35,14 +54,7 @@ export function SignupForm() {
 
   if (state.message) {
     return (
-      <div className="space-y-3 text-center">
-        <MailCheck className="mx-auto size-10 text-primary" />
-        <h2 className="text-lg font-semibold">Check your email</h2>
-        <p className="text-sm text-muted-foreground">
-          We sent a confirmation link to <span className="font-medium text-foreground">{state.message}</span>. Open it
-          on this device to finish setting up your account.
-        </p>
-      </div>
+      <CheckEmail email={state.message}>Open it on this device to finish setting up your account.</CheckEmail>
     )
   }
 
@@ -55,18 +67,48 @@ export function SignupForm() {
         <Input id="email" name="email" type="email" autoComplete="email" required className="h-11" />
       </Field>
       <Field label="Password" htmlFor="password" hint="At least 8 characters.">
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          className="h-11"
-        />
+        <PasswordInput id="password" name="password" autoComplete="new-password" minLength={8} required />
       </Field>
       <FormMessage error={state.error} />
       <SubmitButton pendingLabel="Creating account…">Create account</SubmitButton>
+    </form>
+  )
+}
+
+export function ForgotPasswordForm() {
+  const [state, action] = useActionState(requestPasswordReset, initial)
+
+  if (state.message) {
+    return (
+      <CheckEmail email={state.message}>
+        If there&apos;s an account for it, the link lets you choose a new password. It works once, on this device.
+      </CheckEmail>
+    )
+  }
+
+  return (
+    <form action={action} className="grid gap-4">
+      <Field label="Work email" htmlFor="email">
+        <Input id="email" name="email" type="email" autoComplete="email" required className="h-11" />
+      </Field>
+      <FormMessage error={state.error} />
+      <SubmitButton pendingLabel="Sending…">Send reset link</SubmitButton>
+    </form>
+  )
+}
+
+export function ResetPasswordForm() {
+  const [state, action] = useActionState(updatePassword, initial)
+  return (
+    <form action={action} className="grid gap-4">
+      <Field label="New password" htmlFor="password" hint="At least 8 characters.">
+        <PasswordInput id="password" name="password" autoComplete="new-password" minLength={8} required />
+      </Field>
+      <Field label="Confirm new password" htmlFor="confirm">
+        <PasswordInput id="confirm" name="confirm" autoComplete="new-password" minLength={8} required />
+      </Field>
+      <FormMessage error={state.error} />
+      <SubmitButton pendingLabel="Saving…">Save new password</SubmitButton>
     </form>
   )
 }

@@ -55,6 +55,37 @@ export async function signUp(_: FormState, formData: FormData): Promise<FormStat
   return { message: email }
 }
 
+export async function requestPasswordReset(_: FormState, formData: FormData): Promise<FormState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." }
+  const supabase = await createClient()
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${await siteOrigin()}/auth/confirm?next=/reset-password`,
+  })
+  // Same answer whether or not the account exists, so the form can't be used to probe emails.
+  if (error && error.status === 429) return { error: "Too many requests — wait a minute and try again." }
+  return { message: email }
+}
+
+/** Sets a new password for the user signed in through a reset link. */
+export async function updatePassword(_: FormState, formData: FormData): Promise<FormState> {
+  const password = String(formData.get("password") ?? "")
+  const confirm = String(formData.get("confirm") ?? "")
+  if (password.length < 8) return { error: "Use at least 8 characters for your password." }
+  if (password !== confirm) return { error: "The two passwords don't match." }
+
+  const supabase = await createClient()
+  const { data } = await supabase.auth.getUser()
+  if (!data.user) return { error: "Your reset link has expired. Request a new one." }
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) {
+    return {
+      error: error.code === "same_password" ? "Choose a password you haven't used before." : error.message,
+    }
+  }
+  redirect("/dashboard")
+}
+
 export async function signOut() {
   const supabase = await createClient()
   await supabase.auth.signOut()

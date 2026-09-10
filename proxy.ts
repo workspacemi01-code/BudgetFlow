@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { isSupabaseConfigured, supabaseKey, supabaseUrl } from "@/lib/supabase/config"
 
-const PUBLIC_PREFIXES = ["/login", "/signup", "/auth"]
+const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth"]
 const SIGNED_OUT_ONLY = ["/login", "/signup"]
 
 function isPublic(path: string) {
