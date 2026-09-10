@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from "react"
 
 import { inviteMember, removeMember, updateOrganization } from "@/app/actions/org"
 import { Field, controlClass } from "@/components/field"
+import { Spinner } from "@/components/spinner"
 import { FormMessage, SubmitButton } from "@/components/submit-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -133,6 +134,7 @@ export function RemoveMemberButton({ membershipId, label }: { membershipId: stri
           startTransition(async () => setError((await removeMember(membershipId)).error))
         }}
       >
+        {pending && <Spinner />}
         {pending ? "Removing…" : "Remove"}
       </Button>
       {error && <span className="text-xs text-destructive">{error}</span>}

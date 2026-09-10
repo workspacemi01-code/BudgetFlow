@@ -4,13 +4,18 @@
 import { cache } from "react"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import type { User } from "@supabase/supabase-js"
 
 import { createClient } from "@/lib/supabase/server"
 import type { Role } from "@/lib/types"
 
 /** Remembers the organization a member of several orgs last switched to. */
 export const ORG_COOKIE = "bf_org"
+
+export interface SessionUser {
+  id: string
+  email: string
+  name: string
+}
 
 export interface Organization {
   id: string
@@ -24,12 +29,6 @@ export interface Organization {
   allow_over_budget: boolean
 }
 
-export interface Membership {
-  id: string
-  role: Role
-  org: Organization
-}
-
 export interface Period {
   id: string
   name: string
@@ -38,8 +37,17 @@ export interface Period {
   status: "open" | "closed"
 }
 
+export interface Membership {
+  id: string
+  role: Role
+  org: Organization
+  periods: Period[]
+  /** Departments this membership is assigned to (dept managers, scoped viewers). */
+  departmentIds: string[]
+}
+
 export interface OrgContext {
-  user: User
+  user: SessionUser
   userName: string
   membership: Membership
   memberships: Membership[]
@@ -57,18 +65,56 @@ export interface PendingInvite {
   orgName: string
 }
 
-const ORG_COLUMNS = "id, name, slug, plan, trial_ends_at, currency, fiscal_year_start, brand_label, allow_over_budget"
+interface Claims {
+  sub?: string
+  email?: string
+  exp?: number
+  user_metadata?: { full_name?: string; name?: string }
+}
 
-export const getUser = cache(async (): Promise<User | null> => {
+function decodeClaims(token: string): Claims | null {
+  try {
+    return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")) as Claims
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The signed-in user, read from the session cookie without a network round trip.
+ * The proxy already verified and refreshed this session for the current request, and
+ * Postgres re-verifies the token on every query (RLS), so this only shapes the UI.
+ */
+export const getUser = cache(async (): Promise<SessionUser | null> => {
   const supabase = await createClient()
-  const { data } = await supabase.auth.getUser()
-  return data.user
+  const { data } = await supabase.auth.getSession()
+  const claims = data.session ? decodeClaims(data.session.access_token) : null
+  if (!claims?.sub || (claims.exp && claims.exp * 1000 < Date.now())) return null
+  const email = claims.email ?? ""
+  return {
+    id: claims.sub,
+    email,
+    name: claims.user_metadata?.full_name || claims.user_metadata?.name || email.split("@")[0] || "You",
+  }
 })
 
-export async function requireUser(): Promise<User> {
+export async function requireUser(): Promise<SessionUser> {
   const user = await getUser()
   if (!user) redirect("/login")
   return user
+}
+
+const ORG_COLUMNS = "id, name, slug, plan, trial_ends_at, currency, fiscal_year_start, brand_label, allow_over_budget"
+
+// One query: memberships with their org, the org's budget periods and any department scoping.
+const MEMBERSHIP_QUERY = `id, role, membership_departments (department_id),
+  org:organizations (${ORG_COLUMNS}, budget_periods (id, name, start_date, end_date, status))`
+
+interface MembershipRow {
+  id: string
+  role: Role
+  membership_departments: { department_id: string }[] | null
+  org: Organization & { budget_periods: Period[] | null }
 }
 
 export const getMemberships = cache(async (): Promise<Membership[]> => {
@@ -77,12 +123,22 @@ export const getMemberships = cache(async (): Promise<Membership[]> => {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("memberships")
-    .select(`id, role, org:organizations (${ORG_COLUMNS})`)
+    .select(MEMBERSHIP_QUERY)
     .eq("user_id", user.id)
     .eq("status", "active")
     .order("created_at")
   if (error) throw new Error(error.message)
-  return (data ?? []) as unknown as Membership[]
+
+  return ((data ?? []) as unknown as MembershipRow[]).map(({ id, role, membership_departments, org }) => {
+    const { budget_periods, ...orgFields } = org
+    return {
+      id,
+      role,
+      org: orgFields,
+      periods: (budget_periods ?? []).slice().sort((a, b) => b.start_date.localeCompare(a.start_date)),
+      departmentIds: (membership_departments ?? []).map((d) => d.department_id),
+    }
+  })
 })
 
 /** Invitations addressed to the signed-in user's email that they haven't accepted yet. */
@@ -117,32 +173,17 @@ export const requireOrg = cache(async (): Promise<OrgContext> => {
 
   const chosen = (await cookies()).get(ORG_COOKIE)?.value
   const membership = memberships.find((m) => m.org.id === chosen) ?? memberships[0]
-  const supabase = await createClient()
-
-  const [periods, profile, scopes] = await Promise.all([
-    supabase
-      .from("budget_periods")
-      .select("id, name, start_date, end_date, status")
-      .eq("org_id", membership.org.id)
-      .order("start_date", { ascending: false }),
-    supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
-    supabase.from("membership_departments").select("department_id").eq("membership_id", membership.id),
-  ])
-  if (periods.error) throw new Error(periods.error.message)
-  if (profile.error) throw new Error(profile.error.message)
-  if (scopes.error) throw new Error(scopes.error.message)
-
-  const departmentIds = (scopes.data ?? []).map((s) => s.department_id as string)
-  const limited = membership.role === "dept_manager" || (membership.role === "viewer" && departmentIds.length > 0)
+  const limited =
+    membership.role === "dept_manager" || (membership.role === "viewer" && membership.departmentIds.length > 0)
 
   return {
     user,
-    userName: (profile.data?.full_name as string | null) || user.email?.split("@")[0] || "You",
+    userName: user.name,
     membership,
     memberships,
     org: membership.org,
     role: membership.role,
-    period: pickPeriod((periods.data ?? []) as Period[]),
-    departmentIds: limited ? departmentIds : null,
+    period: pickPeriod(membership.periods),
+    departmentIds: limited ? membership.departmentIds : null,
   }
 })

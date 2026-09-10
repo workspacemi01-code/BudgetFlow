@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { isSupabaseConfigured, supabaseKey, supabaseUrl } from "@/lib/supabase/config"
 
 const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth"]
-const SIGNED_OUT_ONLY = ["/login", "/signup"]
+const SIGNED_OUT_ONLY = ["/", "/login", "/signup"]
 
 function isPublic(path: string) {
   return path === "/" || PUBLIC_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
@@ -16,6 +16,17 @@ function isPublic(path: string) {
  * only the fast, optimistic redirect.
  */
 export async function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname
+
+  // An email link whose redirect address isn't allow-listed in Supabase lands on
+  // the Site URL instead (…/?code=…). Finish signing in rather than dropping it.
+  if (path === "/" && (request.nextUrl.searchParams.has("code") || request.nextUrl.searchParams.has("token_hash"))) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/auth/confirm"
+    if (!url.searchParams.has("next")) url.searchParams.set("next", "/onboarding")
+    return NextResponse.redirect(url)
+  }
+
   if (!isSupabaseConfigured) return NextResponse.next({ request })
 
   let response = NextResponse.next({ request })
@@ -35,7 +46,6 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  const path = request.nextUrl.pathname
 
   const redirectTo = (pathname: string, params: Record<string, string> = {}) => {
     const url = request.nextUrl.clone()

@@ -5,6 +5,7 @@ import { Check, TriangleAlert, X } from "lucide-react"
 
 import { approveTransaction, rejectTransaction, type ActionResult } from "@/app/actions/transactions"
 import { Field, controlClass } from "@/components/field"
+import { Spinner } from "@/components/spinner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -120,7 +121,7 @@ export function ApprovalQueue({
                       disabled={blocked || busy}
                       onClick={() => run(item.id, () => approveTransaction(item.id))}
                     >
-                      <Check />
+                      {busy ? <Spinner /> : <Check />}
                       {busy ? "Saving…" : "Approve"}
                     </Button>
                   </div>

@@ -8,6 +8,7 @@ import { CircleCheck, TriangleAlert } from "lucide-react"
 
 import { createTransaction } from "@/app/actions/transactions"
 import { Field, controlClass } from "@/components/field"
+import { Spinner } from "@/components/spinner"
 import { FormMessage } from "@/components/submit-button"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -196,6 +197,7 @@ export function TransactionForm({
           Cancel
         </Link>
         <Button type="submit" className="h-11 px-4" disabled={isSubmitting}>
+          {isSubmitting && <Spinner />}
           {isSubmitting ? "Submitting…" : "Submit for approval"}
         </Button>
       </div>

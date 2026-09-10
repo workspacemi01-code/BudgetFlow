@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+import Link, { useLinkStatus } from "next/link"
 import { usePathname } from "next/navigation"
 import { useState, useTransition } from "react"
 import {
@@ -24,6 +24,7 @@ import {
 import { signOut } from "@/app/actions/auth"
 import { switchOrg } from "@/app/actions/org"
 import { Logo } from "@/components/logo"
+import { BusyOverlay, Spinner } from "@/components/spinner"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -76,6 +77,12 @@ function useIsActive() {
   return (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 }
 
+/** A nav icon that turns into a spinner while its link is loading. Must render inside <Link>. */
+function NavIcon({ icon: Icon, className }: { icon: LucideIcon; className: string }) {
+  const { pending } = useLinkStatus()
+  return pending ? <Spinner className={className} /> : <Icon className={className} />
+}
+
 function NavLinks({
   items,
   pendingCount,
@@ -88,7 +95,7 @@ function NavLinks({
   const isActive = useIsActive()
   return (
     <nav aria-label="Main" className="grid gap-1">
-      {items.map(({ href, label, icon: Icon }) => (
+      {items.map(({ href, label, icon }) => (
         <Link
           key={href}
           href={href}
@@ -101,7 +108,7 @@ function NavLinks({
               : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
           )}
         >
-          <Icon className="size-4" />
+          <NavIcon icon={icon} className="size-4" />
           <span className="flex-1">{label}</span>
           {href === "/approvals" && pendingCount > 0 && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
@@ -114,7 +121,7 @@ function NavLinks({
   )
 }
 
-function BottomLink({ href, label, icon: Icon, badge = 0 }: NavItem & { badge?: number }) {
+function BottomLink({ href, label, icon, badge = 0 }: NavItem & { badge?: number }) {
   const active = useIsActive()(href)
   return (
     <Link
@@ -125,7 +132,7 @@ function BottomLink({ href, label, icon: Icon, badge = 0 }: NavItem & { badge?: 
         active ? "text-primary" : "text-muted-foreground"
       )}
     >
-      <Icon className="size-5" />
+      <NavIcon icon={icon} className="size-5" />
       {label}
       {badge > 0 && (
         <span className="absolute top-2 left-1/2 ml-1.5 min-w-4 rounded-full bg-red-500 px-1 text-center text-[10px] leading-4 text-white">
@@ -139,82 +146,85 @@ function BottomLink({ href, label, icon: Icon, badge = 0 }: NavItem & { badge?: 
 function OrgSwitcher({ org, orgs, periodName }: { org: ShellOrg; orgs: ShellOrg[]; periodName: string | null }) {
   const [pending, startTransition] = useTransition()
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        disabled={pending}
-        className="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-2 text-left outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
-          {initials(org.name)}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{org.name}</span>
-          <span className="block truncate text-xs text-muted-foreground">
-            {[periodName, ROLE_LABELS[org.role]].filter(Boolean).join(" · ")}
+    <>
+      {pending && <BusyOverlay label="Switching organization…" />}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          disabled={pending}
+          className="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-2 text-left outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+            {initials(org.name)}
           </span>
-        </span>
-        <ChevronsUpDown className="size-4 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Organizations</DropdownMenuLabel>
-          {orgs.map((o) => (
-            <DropdownMenuItem
-              key={o.id}
-              onClick={() => o.id !== org.id && startTransition(() => switchOrg(o.id))}
-            >
-              <span className="min-w-0 flex-1 truncate">{o.name}</span>
-              {o.id === org.id && <Check className="text-primary" />}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link href="/onboarding" />}>
-          <Plus />
-          Join or create organization
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">{org.name}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {[periodName, ROLE_LABELS[org.role]].filter(Boolean).join(" · ")}
+            </span>
+          </span>
+          <ChevronsUpDown className="size-4 text-muted-foreground" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-60">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Organizations</DropdownMenuLabel>
+            {orgs.map((o) => (
+              <DropdownMenuItem key={o.id} onClick={() => o.id !== org.id && startTransition(() => switchOrg(o.id))}>
+                <span className="min-w-0 flex-1 truncate">{o.name}</span>
+                {o.id === org.id && <Check className="text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem render={<Link href="/onboarding" />}>
+            <Plus />
+            Join or create organization
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   )
 }
 
 function UserMenu({ user, role }: { user: { name: string; email: string }; role: Role }) {
-  const [, startTransition] = useTransition()
+  const [pending, startTransition] = useTransition()
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label="Account menu"
-        className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        <Avatar className="size-9">
-          <AvatarFallback className="bg-primary/10 font-medium text-primary">{initials(user.name)}</AvatarFallback>
-        </Avatar>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>
-            <div className="text-sm font-medium text-foreground">{user.name}</div>
-            <div className="truncate text-xs font-normal">
-              {user.email} · {ROLE_LABELS[role]}
-            </div>
-          </DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link href="/settings" />}>
-          <Settings />
-          Settings
-        </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href="/onboarding" />}>
-          <Building2 />
-          Join or create organization
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => startTransition(() => signOut())}>
-          <LogOut />
-          Log out
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      {pending && <BusyOverlay label="Signing out…" />}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="Account menu"
+          className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <Avatar className="size-9">
+            <AvatarFallback className="bg-primary/10 font-medium text-primary">{initials(user.name)}</AvatarFallback>
+          </Avatar>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>
+              <div className="text-sm font-medium text-foreground">{user.name}</div>
+              <div className="truncate text-xs font-normal">
+                {user.email} · {ROLE_LABELS[role]}
+              </div>
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem render={<Link href="/settings" />}>
+            <Settings />
+            Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem render={<Link href="/onboarding" />}>
+            <Building2 />
+            Join or create organization
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => startTransition(() => signOut())}>
+            <LogOut />
+            Log out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   )
 }
 
@@ -276,7 +286,7 @@ export function AppShell({
                 aria-label={`Notifications: ${pendingCount} awaiting approval`}
                 className="relative flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground lg:size-9"
               >
-                <Bell className="size-5 lg:size-4" />
+                <NavIcon icon={Bell} className="size-5 lg:size-4" />
                 {pendingCount > 0 && <span className="absolute top-2 right-2 size-2 rounded-full bg-red-500" />}
               </Link>
             )}
@@ -302,7 +312,7 @@ export function AppShell({
                 aria-label="New transaction"
                 className="-mt-6 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-4 ring-background"
               >
-                <Plus className="size-6" />
+                <NavIcon icon={Plus} className="size-6" />
               </Link>
             </div>
           ) : (
@@ -324,15 +334,13 @@ export function AppShell({
               </SheetHeader>
               <div className="space-y-3 px-4">
                 <NavLinks items={nav} pendingCount={pendingCount} onNavigate={() => setMoreOpen(false)} />
-                {orgs.length > 1 && (
-                  <Link
-                    href="/onboarding"
-                    onClick={() => setMoreOpen(false)}
-                    className="block px-3 text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    Switch organization (desktop menu) or join another
-                  </Link>
-                )}
+                <Link
+                  href="/onboarding"
+                  onClick={() => setMoreOpen(false)}
+                  className="block px-3 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  {orgs.length > 1 ? "Switch, join or create an organization" : "Join or create an organization"}
+                </Link>
               </div>
             </SheetContent>
           </Sheet>

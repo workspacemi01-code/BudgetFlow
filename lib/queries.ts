@@ -322,7 +322,7 @@ export interface Member {
   departmentIds: string[]
 }
 
-async function profileNames(userIds: string[]): Promise<Map<string, { name: string; email: string }>> {
+export async function profileNames(userIds: string[]): Promise<Map<string, { name: string; email: string }>> {
   if (userIds.length === 0) return new Map()
   const supabase = await createClient()
   const result = await supabase.from("profiles").select("id, full_name, email").in("id", userIds)

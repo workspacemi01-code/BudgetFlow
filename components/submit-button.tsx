@@ -2,6 +2,7 @@
 
 import { useFormStatus } from "react-dom"
 
+import { Spinner } from "@/components/spinner"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -20,7 +21,14 @@ export function SubmitButton({
   const { pending } = useFormStatus()
   return (
     <Button type="submit" variant={variant} disabled={pending} className={cn("h-11 px-4", className)}>
-      {pending ? pendingLabel : children}
+      {pending ? (
+        <>
+          <Spinner />
+          {pendingLabel}
+        </>
+      ) : (
+        children
+      )}
     </Button>
   )
 }

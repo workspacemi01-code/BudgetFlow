@@ -1,10 +1,16 @@
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
-import { supabaseKey, supabaseUrl } from "@/lib/supabase/config"
+import { isSupabaseConfigured, supabaseKey, supabaseUrl } from "@/lib/supabase/config"
 
 /** Supabase client for Server Components, Server Actions and Route Handlers. */
 export async function createClient() {
+  if (!isSupabaseConfigured) {
+    throw new Error(
+      "Supabase is not configured: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY " +
+        "(.env.local locally, or Vercel → Settings → Environment Variables, then redeploy)."
+    )
+  }
   const cookieStore = await cookies()
 
   return createServerClient(supabaseUrl, supabaseKey, {

@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import { ApprovalQueue } from "@/components/approval-queue"
 import { PageHeader } from "@/components/page-header"
 import { PaymentQueue } from "@/components/payment-queue"
-import { getLineTotals, getMembers, getTransactions } from "@/lib/queries"
+import { getLineTotals, getTransactions, profileNames } from "@/lib/queries"
 import { isAdmin, isApprover } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
 
@@ -12,22 +12,21 @@ export const metadata: Metadata = { title: "Approvals" }
 export default async function ApprovalsPage() {
   const ctx = await requireOrg()
   const approver = isApprover(ctx.role)
-  const [pending, toPay, lines, members] = await Promise.all([
+  const [pending, toPay, lines] = await Promise.all([
     getTransactions(ctx, { statuses: ["pending"] }),
     approver ? getTransactions(ctx, { statuses: ["approved", "partially_paid"] }) : Promise.resolve([]),
     getLineTotals(ctx),
-    getMembers(ctx),
   ])
 
   const available = new Map(lines.map((l) => [l.id, l.available]))
-  const names = new Map(members.filter((m) => m.userId).map((m) => [m.userId as string, m.name]))
+  const names = await profileNames([...new Set(pending.map((t) => t.createdBy).filter((id): id is string => !!id))])
   const items = pending
     .slice()
     .reverse() // oldest request first
     .map((t) => ({
       ...t,
       available: available.get(t.lineId) ?? 0,
-      requester: (t.createdBy && names.get(t.createdBy)) || "a former member",
+      requester: (t.createdBy && names.get(t.createdBy)?.name) || "a former member",
     }))
 
   return (
