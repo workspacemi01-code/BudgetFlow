@@ -6,4 +6,6 @@ export type TxnStatus = "draft" | "pending" | "approved" | "partially_paid" | "p
 export interface FormState {
   error?: string
   message?: string
+  /** Set when sign-in failed only because this email isn't confirmed yet. */
+  unconfirmedEmail?: string
 }

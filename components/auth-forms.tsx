@@ -1,10 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { useActionState } from "react"
+import { useActionState, useState } from "react"
 import { MailCheck } from "lucide-react"
 
-import { requestPasswordReset, signIn, signUp, updatePassword } from "@/app/actions/auth"
+import { requestPasswordReset, resendConfirmation, signIn, signUp, updatePassword } from "@/app/actions/auth"
 import { createOrganization } from "@/app/actions/org"
 import { Field, controlClass } from "@/components/field"
 import { PasswordInput } from "@/components/password-input"
@@ -27,34 +27,81 @@ function CheckEmail({ email, children }: { email: string; children: React.ReactN
   )
 }
 
-export function LoginForm({ next }: { next?: string }) {
-  const [state, action] = useActionState(signIn, initial)
+/** "Didn't get it?" — sends another confirmation link to a known address. */
+export function ResendConfirmationButton({ email }: { email: string }) {
+  const [state, action] = useActionState(resendConfirmation, initial)
   return (
-    <form action={action} className="grid gap-4">
-      {next && <input type="hidden" name="next" value={next} />}
-      <Field label="Work email" htmlFor="email">
-        <Input id="email" name="email" type="email" autoComplete="email" required className="h-11" />
-      </Field>
-      <div className="grid gap-1.5">
-        <Field label="Password" htmlFor="password">
-          <PasswordInput id="password" name="password" autoComplete="current-password" required />
-        </Field>
-        <Link href="/forgot-password" className="justify-self-end text-xs font-medium text-primary hover:underline">
-          Forgot password?
-        </Link>
-      </div>
-      <FormMessage error={state.error} />
-      <SubmitButton pendingLabel="Signing in…">Sign in</SubmitButton>
+    <form action={action} className="grid gap-2">
+      <input type="hidden" name="email" value={email} />
+      <FormMessage error={state.error} message={state.message} />
+      <SubmitButton variant="outline" pendingLabel="Sending…">
+        Resend confirmation email
+      </SubmitButton>
     </form>
   )
 }
 
+/** For an expired link: ask for the email, then send a new confirmation link. */
+export function ResendConfirmationForm() {
+  const [state, action] = useActionState(resendConfirmation, initial)
+  return (
+    <form action={action} className="grid gap-3">
+      <Field label="Email you signed up with" htmlFor="resend-email">
+        <Input id="resend-email" name="email" type="email" autoComplete="email" required className="h-11" />
+      </Field>
+      <FormMessage error={state.error} message={state.message} />
+      <SubmitButton variant="outline" pendingLabel="Sending…">
+        Send a new confirmation link
+      </SubmitButton>
+    </form>
+  )
+}
+
+export function LoginForm({ next }: { next?: string }) {
+  const [state, action] = useActionState(signIn, initial)
+  return (
+    <div className="grid gap-4">
+      <form action={action} className="grid gap-4">
+        {next && <input type="hidden" name="next" value={next} />}
+        <Field label="Work email" htmlFor="email">
+          <Input id="email" name="email" type="email" autoComplete="email" required className="h-11" />
+        </Field>
+        <div className="grid gap-1.5">
+          <Field label="Password" htmlFor="password">
+            <PasswordInput id="password" name="password" autoComplete="current-password" required />
+          </Field>
+          <Link href="/forgot-password" className="justify-self-end text-xs font-medium text-primary hover:underline">
+            Forgot password?
+          </Link>
+        </div>
+        <FormMessage error={state.error} />
+        <SubmitButton pendingLabel="Signing in…">Sign in</SubmitButton>
+      </form>
+      {state.unconfirmedEmail && <ResendConfirmationButton email={state.unconfirmedEmail} />}
+    </div>
+  )
+}
+
 export function SignupForm() {
+  // Remounting (new key) resets the form's action state for "Use a different email".
+  const [attempt, setAttempt] = useState(0)
+  return <SignupFormInner key={attempt} onStartOver={() => setAttempt((n) => n + 1)} />
+}
+
+function SignupFormInner({ onStartOver }: { onStartOver: () => void }) {
   const [state, action] = useActionState(signUp, initial)
 
   if (state.message) {
     return (
-      <CheckEmail email={state.message}>Open it on this device to finish setting up your account.</CheckEmail>
+      <div className="grid gap-4">
+        <CheckEmail email={state.message}>
+          Click the button in that email to confirm your account — it works on any device.
+        </CheckEmail>
+        <ResendConfirmationButton email={state.message} />
+        <button type="button" onClick={onStartOver} className="text-center text-sm font-medium text-primary hover:underline">
+          Use a different email
+        </button>
+      </div>
     )
   }
 
@@ -63,7 +110,7 @@ export function SignupForm() {
       <Field label="Your name" htmlFor="name">
         <Input id="name" name="name" autoComplete="name" required className="h-11" />
       </Field>
-      <Field label="Work email" htmlFor="email" hint="We'll send a link to confirm it.">
+      <Field label="Work email" htmlFor="email">
         <Input id="email" name="email" type="email" autoComplete="email" required className="h-11" />
       </Field>
       <Field label="Password" htmlFor="password" hint="At least 8 characters.">
@@ -81,7 +128,8 @@ export function ForgotPasswordForm() {
   if (state.message) {
     return (
       <CheckEmail email={state.message}>
-        If there&apos;s an account for it, the link lets you choose a new password. It works once, on this device.
+        If there&apos;s an account for it, the button in that email lets you choose a new password. The link works
+        once and expires after an hour.
       </CheckEmail>
     )
   }

@@ -27,11 +27,27 @@ export async function signIn(_: FormState, formData: FormData): Promise<FormStat
   const { error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) {
     if (error.code === "email_not_confirmed") {
-      return { error: "Confirm your email first — open the link we sent to your inbox." }
+      return { error: "Confirm your email first — open the link we sent to your inbox.", unconfirmedEmail: email }
     }
     return { error: "That email and password don't match an account." }
   }
   redirect(safeNext(formData.get("next"), "/dashboard"))
+}
+
+/** Sends a fresh confirmation link to an account that hasn't confirmed its email. */
+export async function resendConfirmation(_: FormState, formData: FormData): Promise<FormState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." }
+  const supabase = await createClient()
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/onboarding` },
+  })
+  if (error) {
+    return { error: error.status === 429 ? "Please wait a minute before asking for another email." : error.message }
+  }
+  return { message: `We sent a new link to ${email}. It can take a minute — check spam too.` }
 }
 
 export async function signUp(_: FormState, formData: FormData): Promise<FormState> {

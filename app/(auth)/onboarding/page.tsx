@@ -3,6 +3,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 
 import { AcceptInviteButton } from "@/components/accept-invite-button"
+import { FormMessage } from "@/components/submit-button"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ROLE_LABELS } from "@/lib/roles"
@@ -11,10 +12,12 @@ import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "Get started" }
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage(props: PageProps<"/onboarding">) {
+  const { notice } = await props.searchParams
+  const confirmed = notice === "confirmed"
   const user = await requireUser()
   const [invites, memberships] = await Promise.all([getPendingInvites(), getMemberships()])
-  if (invites.length === 0 && memberships.length === 0) redirect("/create-org")
+  if (invites.length === 0 && memberships.length === 0) redirect(confirmed ? "/create-org?notice=confirmed" : "/create-org")
 
   return (
     <Card>
@@ -23,6 +26,7 @@ export default async function OnboardingPage() {
         <CardDescription>Signed in as {user.email}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {confirmed && <FormMessage message="Your email is confirmed — welcome to BudgetFlow." />}
         {invites.length > 0 && (
           <ul className="divide-y rounded-lg border">
             {invites.map((invite) => (

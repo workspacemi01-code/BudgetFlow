@@ -1,14 +1,21 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 
-import { LoginForm } from "@/components/auth-forms"
+import { LoginForm, ResendConfirmationForm } from "@/components/auth-forms"
 import { FormMessage } from "@/components/submit-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export const metadata: Metadata = { title: "Sign in" }
 
+const LINK_ERRORS: Record<string, string> = {
+  link_expired: "That confirmation link has expired or was already used. If you've confirmed already, just sign in.",
+  reset_expired: "That password reset link has expired or was already used.",
+}
+
 export default async function LoginPage(props: PageProps<"/login">) {
   const { next, error } = await props.searchParams
+  const code = typeof error === "string" ? error : undefined
+
   return (
     <Card>
       <CardHeader>
@@ -16,8 +23,19 @@ export default async function LoginPage(props: PageProps<"/login">) {
         <CardDescription>Welcome back to BudgetFlow.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {typeof error === "string" && <FormMessage error={error} />}
+        {code && <FormMessage error={LINK_ERRORS[code] ?? code} />}
+        {code === "reset_expired" && (
+          <Link href="/forgot-password" className="block text-center text-sm font-medium text-primary hover:underline">
+            Send a new reset link
+          </Link>
+        )}
         <LoginForm next={typeof next === "string" ? next : undefined} />
+        {code === "link_expired" && (
+          <div className="space-y-3 border-t pt-4">
+            <p className="text-sm font-medium">Need a new confirmation link?</p>
+            <ResendConfirmationForm />
+          </div>
+        )}
         <p className="text-center text-sm text-muted-foreground">
           New to BudgetFlow?{" "}
           <Link href="/signup" className="font-medium text-primary hover:underline">
