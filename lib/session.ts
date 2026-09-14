@@ -63,6 +63,8 @@ export interface PendingInvite {
   id: string
   role: Role
   orgName: string
+  /** The token in the invitation email, so the list can link to the confirm page. */
+  token: string
 }
 
 interface Claims {
@@ -148,15 +150,18 @@ export async function getPendingInvites(): Promise<PendingInvite[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("memberships")
-    .select("id, role, org:organizations (name)")
+    .select("id, role, invite_token, org:organizations (name)")
     .is("user_id", null)
     .eq("status", "pending")
     .eq("invited_email", user.email.toLowerCase())
+    .gt("invite_expires_at", new Date().toISOString())
   if (error) throw new Error(error.message)
-  return ((data ?? []) as unknown as { id: string; role: Role; org: { name: string } | null }[]).map((row) => ({
+  type Row = { id: string; role: Role; invite_token: string; org: { name: string } | null }
+  return ((data ?? []) as unknown as Row[]).map((row) => ({
     id: row.id,
     role: row.role,
     orgName: row.org?.name ?? "An organization",
+    token: row.invite_token,
   }))
 }
 

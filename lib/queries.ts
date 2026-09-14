@@ -320,6 +320,9 @@ export interface Member {
   role: Role
   status: "active" | "pending" | "suspended"
   departmentIds: string[]
+  /** Pending invitations only: the token in their link, and when it stops working. */
+  inviteToken: string | null
+  inviteExpiresAt: string | null
 }
 
 export async function profileNames(userIds: string[]): Promise<Map<string, { name: string; email: string }>> {
@@ -338,7 +341,9 @@ export async function getMembers(ctx: OrgContext): Promise<Member[]> {
   const supabase = await createClient()
   const result = await supabase
     .from("memberships")
-    .select("id, user_id, invited_email, role, status, membership_departments (department_id)")
+    .select(
+      "id, user_id, invited_email, role, status, invite_token, invite_expires_at, membership_departments (department_id)"
+    )
     .eq("org_id", ctx.org.id)
     .order("created_at")
   const memberships = rows(result)
@@ -355,6 +360,8 @@ export async function getMembers(ctx: OrgContext): Promise<Member[]> {
       role: m.role as Role,
       status: m.status as Member["status"],
       departmentIds: ((m.membership_departments ?? []) as Row[]).map((d) => String(d.department_id)),
+      inviteToken: m.status === "pending" ? str(m.invite_token) : null,
+      inviteExpiresAt: m.status === "pending" ? str(m.invite_expires_at) : null,
     }
   })
 }

@@ -2,8 +2,9 @@
 
 import { useActionState, useState, useTransition } from "react"
 
-import { inviteMember, removeMember, updateOrganization } from "@/app/actions/org"
+import { inviteMember, removeMember, resendInvite, updateOrganization } from "@/app/actions/org"
 import { Field, controlClass } from "@/components/field"
+import { CopyInviteLink } from "@/components/invite-actions"
 import { Spinner } from "@/components/spinner"
 import { FormMessage, SubmitButton } from "@/components/submit-button"
 import { Button } from "@/components/ui/button"
@@ -105,18 +106,44 @@ export function InviteForm({ roles, departments }: { roles: Role[]; departments:
           )}
         </fieldset>
       )}
-      <FormMessage
-        error={state.error}
-        message={
-          state.message
-            ? `Invitation saved. Ask ${state.message} to sign up at ${typeof window === "undefined" ? "" : window.location.origin}/signup with that email — they'll be offered to join.`
-            : undefined
-        }
-      />
+      <FormMessage error={state.error} warning={state.warning} message={state.message} />
+      {state.inviteUrl && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border p-2.5">
+          <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{state.inviteUrl}</code>
+          <CopyInviteLink url={state.inviteUrl} label="Copy link" />
+        </div>
+      )}
       <SubmitButton pendingLabel="Inviting…" className="justify-self-start">
         Send invitation
       </SubmitButton>
     </form>
+  )
+}
+
+/** Sends a pending invitation again and gives it another 7 days. */
+export function ResendInviteButton({ membershipId, inviteUrl }: { membershipId: string; inviteUrl: string }) {
+  const [pending, startTransition] = useTransition()
+  const [state, setState] = useState<FormState>({})
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex justify-end gap-2">
+        <CopyInviteLink url={inviteUrl} label="Copy link" />
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={pending}
+          onClick={() => startTransition(async () => setState((await resendInvite(membershipId)) ?? {}))}
+        >
+          {pending ? "Sending…" : "Resend"}
+        </Button>
+      </div>
+      {(state.error || state.warning || state.message) && (
+        <p className={`text-xs ${state.error || state.warning ? "text-destructive" : "text-muted-foreground"}`}>
+          {state.error ?? state.warning ?? state.message}
+        </p>
+      )}
+    </div>
   )
 }
 

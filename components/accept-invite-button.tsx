@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from "react"
 
-import { acceptInvite } from "@/app/actions/org"
+import { acceptInviteByToken } from "@/app/actions/org"
 import { Spinner } from "@/components/spinner"
 import { Button } from "@/components/ui/button"
 
-export function AcceptInviteButton({ membershipId }: { membershipId: string }) {
+/** One-click join from the list of invitations waiting for this address. */
+export function AcceptInviteButton({ token }: { token: string }) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string>()
 
@@ -17,7 +18,7 @@ export function AcceptInviteButton({ membershipId }: { membershipId: string }) {
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
-            const result = await acceptInvite(membershipId)
+            const result = await acceptInviteByToken(token)
             setError(result?.error)
           })
         }
