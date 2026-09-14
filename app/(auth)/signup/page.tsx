@@ -6,18 +6,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 export const metadata: Metadata = { title: "Start free trial" }
 
-export default function SignupPage() {
+export default async function SignupPage(props: PageProps<"/signup">) {
+  const { next, email } = await props.searchParams
+  // Arriving from an invitation: the address is fixed and we come straight back.
+  const invited = typeof email === "string" ? email : undefined
+  const destination = typeof next === "string" ? next : undefined
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Start your free trial</CardTitle>
-        <CardDescription>14 days free. No card required. Invited by your team? Sign up with the email they used.</CardDescription>
+        <CardTitle className="text-lg">{invited ? "Create your account" : "Start your free trial"}</CardTitle>
+        <CardDescription>
+          {invited
+            ? "Set a password and you'll come straight back to your invitation."
+            : "14 days free. No card required. Invited by your team? Sign up with the email they used."}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <SignupForm />
+        <SignupForm next={destination} email={invited} />
         <p className="text-center text-sm text-muted-foreground">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-primary hover:underline">
+          <Link
+            href={destination ? `/login?next=${encodeURIComponent(destination)}${invited ? `&email=${encodeURIComponent(invited)}` : ""}` : "/login"}
+            className="font-medium text-primary hover:underline"
+          >
             Sign in
           </Link>
         </p>

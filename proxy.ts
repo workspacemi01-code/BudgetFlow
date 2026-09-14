@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { isSupabaseConfigured, supabaseKey, supabaseUrl } from "@/lib/supabase/config"
 
-const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth"]
+const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth", "/invite"]
 const SIGNED_OUT_ONLY = ["/", "/login", "/signup"]
 
 function isPublic(path: string) {
@@ -57,7 +57,21 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!user && !isPublic(path)) return redirectTo("/login", { next: path })
-  if (user && SIGNED_OUT_ONLY.includes(path)) return redirectTo("/dashboard")
+  // Already signed in and back on a signed-out-only page: honour where they were
+  // headed, so an invitation link isn't dropped on the way through.
+  if (user && SIGNED_OUT_ONLY.includes(path)) {
+    const next = request.nextUrl.searchParams.get("next") ?? ""
+    if (next.startsWith("/") && !next.startsWith("//")) {
+      const url = request.nextUrl.clone()
+      const [pathname, search = ""] = next.split("?")
+      url.pathname = pathname
+      url.search = search
+      const redirect = NextResponse.redirect(url)
+      response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie))
+      return redirect
+    }
+    return redirectTo("/dashboard")
+  }
   return response
 }
 

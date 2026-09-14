@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 
 import { PageHeader } from "@/components/page-header"
-import { InviteForm, OrgSettingsForm, RemoveMemberButton } from "@/components/settings-forms"
+import { InviteForm, OrgSettingsForm, RemoveMemberButton, ResendInviteButton } from "@/components/settings-forms"
 import { STATUS_LABELS } from "@/components/status-badge"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,6 +10,7 @@ import { CURRENCIES, formatDateTime, formatMoney } from "@/lib/format"
 import { getAuditLog, getDepartments, getMembers, type AuditEntry } from "@/lib/queries"
 import { ROLE_LABELS, invitableRoles, isAdmin, isApprover } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
+import { inviteUrl, siteOrigin } from "@/lib/site"
 import type { TxnStatus } from "@/lib/types"
 
 export const metadata: Metadata = { title: "Settings" }
@@ -50,10 +51,11 @@ function describe(entry: AuditEntry, currency: string): { what: string; detail?:
 export default async function SettingsPage() {
   const ctx = await requireOrg()
   const admin = isAdmin(ctx.role)
-  const [members, departments, audit] = await Promise.all([
+  const [members, departments, audit, origin] = await Promise.all([
     getMembers(ctx),
     getDepartments(ctx),
     isApprover(ctx.role) ? getAuditLog(ctx) : Promise.resolve([]),
+    siteOrigin(),
   ])
   const departmentName = new Map(departments.map((d) => [d.id, d.name]))
 
@@ -112,7 +114,7 @@ export default async function SettingsPage() {
                     <TableHead>Role</TableHead>
                     <TableHead>Departments</TableHead>
                     <TableHead>Status</TableHead>
-                    {admin && <TableHead className="w-24" />}
+                    {admin && <TableHead className="w-48" />}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -134,9 +136,20 @@ export default async function SettingsPage() {
                         <Badge variant={m.status === "active" ? "secondary" : "outline"}>
                           {m.status === "active" ? "Active" : m.status === "pending" ? "Invited" : "Suspended"}
                         </Badge>
+                        {m.status === "pending" && m.inviteExpiresAt && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Link expires {formatDateTime(m.inviteExpiresAt)}
+                          </div>
+                        )}
                       </TableCell>
                       {admin && (
-                        <TableCell className="text-right">
+                        <TableCell className="space-y-1 text-right">
+                          {m.status === "pending" && m.inviteToken && (
+                            <ResendInviteButton
+                              membershipId={m.membershipId}
+                              inviteUrl={inviteUrl(origin, m.inviteToken)}
+                            />
+                          )}
                           {m.userId !== ctx.user.id && m.role !== "owner" && (
                             <RemoveMemberButton membershipId={m.membershipId} label={m.name} />
                           )}
@@ -153,7 +166,7 @@ export default async function SettingsPage() {
                 <div>
                   <h3 className="font-medium">Invite someone</h3>
                   <p className="text-xs text-muted-foreground">
-                    They join when they sign up (or sign in) with this email address.
+                    We email them a link. It works for 7 days and only for this address.
                   </p>
                 </div>
                 <InviteForm

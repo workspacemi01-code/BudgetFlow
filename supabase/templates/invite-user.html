@@ -1,0 +1,59 @@
+<!--
+  Supabase → Authentication → Emails → Templates → "Invite user"
+  Subject: You've been invited to BudgetFlow
+
+  Sent when an owner or admin invites an address that has no account yet.
+  `next={{ .RedirectTo }}` carries the /invite/<token> page through the sign-in
+  hop — app/auth/confirm/route.ts accepts a same-origin absolute URL there and
+  falls back to /onboarding if it is ever empty.
+-->
+<div style="margin:0;padding:32px 16px;background:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2933;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;">
+    <tr>
+      <td style="padding:0 0 20px 4px;">
+        <span style="display:inline-block;width:32px;height:32px;border-radius:8px;background:#0f766e;color:#ffffff;font-weight:700;font-size:16px;line-height:32px;text-align:center;vertical-align:middle;">B</span>
+        <span style="font-size:17px;font-weight:600;vertical-align:middle;margin-left:8px;">BudgetFlow</span>
+      </td>
+    </tr>
+    <tr>
+      <td style="background:#ffffff;border:1px solid #e3e8e6;border-radius:12px;padding:32px;">
+        <h1 style="margin:0 0 12px;font-size:20px;line-height:28px;font-weight:600;">
+          {{ if .Data.org_name }}You've been invited to {{ .Data.org_name }}{{ else }}You've been invited to BudgetFlow{{ end }}
+        </h1>
+        <p style="margin:0 0 20px;font-size:15px;line-height:24px;color:#52606d;">
+          {{ if .Data.invited_by }}<strong style="color:#1f2933;">{{ .Data.invited_by }}</strong> invited{{ else }}You've been invited{{ end }}
+          <strong style="color:#1f2933;">{{ .Email }}</strong> to join
+          {{ if .Data.org_name }}{{ .Data.org_name }}{{ else }}their organization{{ end }} on BudgetFlow{{ if .Data.invited_role }}
+          as <strong style="color:#1f2933;">{{ .Data.invited_role }}</strong>{{ end }}.
+        </p>
+        <p style="margin:0 0 20px;font-size:15px;line-height:24px;color:#52606d;">
+          BudgetFlow is where the team plans budgets, raises spend and tracks what's left. Review the invitation and
+          confirm to join.
+        </p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+          <tr>
+            <td style="border-radius:8px;background:#0f766e;">
+              <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next={{ .RedirectTo }}"
+                 style="display:inline-block;padding:12px 24px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+                Review the invitation
+              </a>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:0 0 8px;font-size:13px;line-height:20px;color:#7b8794;">
+          The invitation lasts 7 days and only works for this address. If the button doesn't work, copy this into your
+          browser:
+        </p>
+        <p style="margin:0;font-size:12px;line-height:18px;word-break:break-all;color:#0f766e;">
+          {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next={{ .RedirectTo }}
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:20px 4px 0;font-size:12px;line-height:18px;color:#9aa5b1;">
+        You're receiving this because someone invited this address to their organization on BudgetFlow. If you weren't
+        expecting it, ignore this email — nothing happens until you confirm.
+      </td>
+    </tr>
+  </table>
+</div>

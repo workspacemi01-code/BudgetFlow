@@ -22,6 +22,7 @@ changed it, and the product answers given so far. Read it before changing the sc
 4. **`membership_departments`** links a dept_manager (or a restricted viewer) to one or more departments.
 5. **`budget_periods`** (e.g. FY2026). Department budgets (`department_budgets`) and budget lines belong to a period, so history survives year-end.
 6. **`payments` table.** Spent = sum of non-voided payments. Transaction status `approved → partially_paid → paid` is derived from payments and cannot be set by hand.
+7. **Invitation links, and the Supabase mailer instead of an Edge Function.** Every pending membership carries an `invite_token` and a 7-day `invite_expires_at` (0003), so an email can link to `/invite/<token>`. Sending reuses Supabase Auth rather than a Resend Edge Function: `admin.inviteUserByEmail` for an address with no account, a magic link for one that already has an account (`inviteUserByEmail` rejects existing addresses). One less moving part and one less key, at the cost of Supabase's sending limits — swap in SMTP before real volume. `public.invitation_preview` is the only function `anon` may call, so the confirm page can render before sign-up.
 
 ## Conventions
 
@@ -34,9 +35,12 @@ changed it, and the product answers given so far. Read it before changing the sc
 - Receipts: private `receipts` bucket, path `{org_id}/{transaction_id}/{filename}`.
 - Requests without a user JWT (service role, SQL editor, seeds, webhooks) skip workflow checks; everything from the app goes through RLS + triggers.
 - Supabase Auth must keep **email confirmation on**: invitations are matched on the JWT email.
+- Invitations are **bound to the address they were sent to**. The token says *which* invitation; RLS and `guard_membership` decide *whether* it may be accepted, by comparing `invited_email` to the JWT email. Forwarding a link grants nothing.
+- An account created by an invitation has **no password**. `/auth/confirm` marks `type=invite` links with `?setup=1`, and the invitee is sent to `/reset-password?setup=1` once they have joined.
 
 ## Known follow-ups
 
 - `private.line_available` aggregates via the view; add a per-line fast path if approvals slow down.
 - Segregation of duties (block approving your own transaction) as an org setting.
-- Invite emails + tokens via Edge Function + Resend (Phase 5).
+- `admin.inviteUserByEmail` creates the auth user immediately, so revoking an invitation leaves an orphan passwordless account behind. Harmless (it belongs to no org) but worth sweeping.
+- Own SMTP (Resend/Postmark) in Supabase → Authentication → Emails before inviting real teams; the built-in mailer rate-limits after a handful of sends.

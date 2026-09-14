@@ -33,11 +33,21 @@ export function SubmitButton({
   )
 }
 
-export function FormMessage({ error, message }: { error?: string; message?: string }) {
+export function FormMessage({ error, warning, message }: { error?: string; warning?: string; message?: string }) {
   if (error) {
     return (
       <p role="alert" className="rounded-lg bg-red-50 p-2.5 text-sm text-red-800 dark:bg-red-500/10 dark:text-red-300">
         {error}
+      </p>
+    )
+  }
+  if (warning) {
+    return (
+      <p
+        role="status"
+        className="rounded-lg bg-amber-50 p-2.5 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200"
+      >
+        {warning}
       </p>
     )
   }

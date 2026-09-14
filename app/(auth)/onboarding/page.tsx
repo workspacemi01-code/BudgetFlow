@@ -35,7 +35,7 @@ export default async function OnboardingPage(props: PageProps<"/onboarding">) {
                   <div className="truncate font-medium">{invite.orgName}</div>
                   <div className="text-xs text-muted-foreground">as {ROLE_LABELS[invite.role]}</div>
                 </div>
-                <AcceptInviteButton membershipId={invite.id} />
+                <AcceptInviteButton token={invite.token} />
               </li>
             ))}
           </ul>
