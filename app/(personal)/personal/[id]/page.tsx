@@ -1,15 +1,8 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
-import { BudgetScreen } from "@/components/personal/budget-screen"
-import {
-  budgetTotals,
-  getBudgets,
-  getEntries,
-  getLines,
-  pickBudget,
-  requirePersonal,
-} from "@/lib/personal"
+import { BudgetOverview } from "@/components/personal/budget-overview"
+import { budgetTotals, getBudgets, getLines, pickBudget, requirePersonal } from "@/lib/personal"
 
 export const metadata: Metadata = { title: "My budget" }
 
@@ -21,14 +14,15 @@ export default async function PersonalBudgetPage(props: PageProps<"/personal/[id
   const budget = pickBudget(budgets, id)
   if (!budget) notFound()
 
-  const [lines, entries] = await Promise.all([getLines(budget.id), getEntries(budget.id)])
+  // Only the lines here — the individual spends belong to the category screens,
+  // and loading every entry to render a list of totals was work for nothing.
+  const lines = await getLines(budget.id)
 
   return (
-    <BudgetScreen
+    <BudgetOverview
       budget={budget}
       budgets={budgets}
       lines={lines}
-      entries={entries}
       totals={budgetTotals(lines)}
       currency={profile.currency}
     />
