@@ -47,15 +47,23 @@ export async function signUp(_: FormState, formData: FormData): Promise<FormStat
   const name = String(formData.get("name") ?? "").trim()
   const email = String(formData.get("email") ?? "").trim().toLowerCase()
   const password = String(formData.get("password") ?? "")
+  // Which tab they signed up under. Recorded on the user, not only in the
+  // redirect: confirmation emails get opened on a different device from the one
+  // that filled the form in, and the metadata is what still knows the answer if
+  // the link is opened bare or the query string is lost.
+  const individual = formData.get("accountType") === "individual"
   // Where to land once confirmed — an invitation link puts its confirm page here.
-  const next = safePath(formData.get("next"), "/onboarding")
+  const next = safePath(formData.get("next"), individual ? "/onboarding?type=individual" : "/onboarding")
   if (password.length < 8) return { error: "Use at least 8 characters for your password." }
 
   const supabase = await createClient()
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name: name }, emailRedirectTo: await confirmUrl(next) },
+    options: {
+      data: { full_name: name, account_type: individual ? "individual" : "business" },
+      emailRedirectTo: await confirmUrl(next),
+    },
   })
   if (error) return { error: error.message }
   // Email confirmation off → already signed in.

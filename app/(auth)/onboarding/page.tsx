@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 
-import { AccountTypeChooser } from "@/components/account-type-chooser"
+import { AccountTypeChooser, IndividualSetupCard } from "@/components/account-type-chooser"
 import { AcceptInviteButton } from "@/components/accept-invite-button"
 import { FormMessage } from "@/components/submit-button"
 import { buttonVariants } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 export const metadata: Metadata = { title: "Get started" }
 
 export default async function OnboardingPage(props: PageProps<"/onboarding">) {
-  const { notice } = await props.searchParams
+  const { notice, type } = await props.searchParams
   const confirmed = notice === "confirmed"
   const user = await requireUser()
   const [invites, memberships, personal] = await Promise.all([
@@ -24,16 +24,22 @@ export default async function OnboardingPage(props: PageProps<"/onboarding">) {
     getPersonalProfile(),
   ])
 
-  // Step two of signing up. Someone with nothing yet has to say what kind of
-  // account this is before anything can be built for them: a company budget and
-  // a personal one share almost no screens, so guessing wrong means showing
-  // departments and approvals to a person budgeting their own rent.
-  if (invites.length === 0 && memberships.length === 0 && !personal) {
+  const fresh = invites.length === 0 && memberships.length === 0
+
+  // They already chose on the signup page. The query string is the fast path;
+  // the account type stored on the user is what still answers when the
+  // confirmation email is opened somewhere the query string didn't reach.
+  const chose = type === "individual" || user.accountType === "individual" ? "individual" : user.accountType
+
+  if (fresh && !personal) {
+    if (chose === "individual") return <IndividualSetupCard email={user.email} confirmed={confirmed} />
+    if (chose === "business") redirect(confirmed ? "/create-org?notice=confirmed" : "/create-org")
+    // Signed up before the choice existed — ask rather than guess.
     return <AccountTypeChooser email={user.email} confirmed={confirmed} />
   }
 
   // Individual, and nothing else — go straight to it.
-  if (invites.length === 0 && memberships.length === 0) redirect("/personal")
+  if (fresh) redirect("/personal")
 
   return (
     <Card>

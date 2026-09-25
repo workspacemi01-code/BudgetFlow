@@ -15,6 +15,14 @@ export interface SessionUser {
   id: string
   email: string
   name: string
+  /**
+   * Which tab they signed up under, when they signed up under one.
+   *
+   * Undefined for everyone who joined before the choice existed — deliberately
+   * left blank rather than defaulted to "business", so those accounts get asked
+   * instead of being silently put on one side of the product.
+   */
+  accountType?: "individual" | "business"
 }
 
 export interface Organization {
@@ -71,7 +79,7 @@ interface Claims {
   sub?: string
   email?: string
   exp?: number
-  user_metadata?: { full_name?: string; name?: string }
+  user_metadata?: { full_name?: string; name?: string; account_type?: string }
 }
 
 function decodeClaims(token: string): Claims | null {
@@ -97,6 +105,12 @@ export const getUser = cache(async (): Promise<SessionUser | null> => {
     id: claims.sub,
     email,
     name: claims.user_metadata?.full_name || claims.user_metadata?.name || email.split("@")[0] || "You",
+    accountType:
+      claims.user_metadata?.account_type === "individual"
+        ? "individual"
+        : claims.user_metadata?.account_type === "business"
+          ? "business"
+          : undefined,
   }
 })
 

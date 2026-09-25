@@ -92,19 +92,39 @@ export function LoginForm({ next, email }: { next?: string; email?: string }) {
   )
 }
 
-export function SignupForm({ next, email }: { next?: string; email?: string }) {
+export function SignupForm({
+  next,
+  email,
+  accountType = "business",
+}: {
+  next?: string
+  email?: string
+  accountType?: "business" | "individual"
+}) {
   // Remounting (new key) resets the form's action state for "Use a different email".
+  // The type is part of the key too, so switching tabs mid-way clears a stale
+  // "check your email" panel rather than leaving it stranded above the new tab.
   const [attempt, setAttempt] = useState(0)
-  return <SignupFormInner key={attempt} next={next} email={email} onStartOver={() => setAttempt((n) => n + 1)} />
+  return (
+    <SignupFormInner
+      key={`${accountType}-${attempt}`}
+      next={next}
+      email={email}
+      accountType={accountType}
+      onStartOver={() => setAttempt((n) => n + 1)}
+    />
+  )
 }
 
 function SignupFormInner({
   next,
   email,
+  accountType,
   onStartOver,
 }: {
   next?: string
   email?: string
+  accountType: "business" | "individual"
   onStartOver: () => void
 }) {
   const [state, action] = useActionState(signUp, initial)
@@ -128,10 +148,17 @@ function SignupFormInner({
   return (
     <form action={action} className="grid gap-4">
       {next && <input type="hidden" name="next" value={next} />}
+      {/* Rides through the confirmation email as user metadata, so the account
+          is still the kind they picked when they come back on another device. */}
+      <input type="hidden" name="accountType" value={accountType} />
       <Field label="Your name" htmlFor="name">
         <Input id="name" name="name" autoComplete="name" required className="h-11" />
       </Field>
-      <Field label="Work email" htmlFor="email" hint={email ? "The address your invitation was sent to." : undefined}>
+      <Field
+        label={accountType === "individual" ? "Email" : "Work email"}
+        htmlFor="email"
+        hint={email ? "The address your invitation was sent to." : undefined}
+      >
         <Input
           id="email"
           name="email"
