@@ -129,3 +129,42 @@
     @apply font-sans;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Loading shimmer
+   ---------------------------------------------------------------------------
+   A light sweeping across the placeholder blocks while a screen loads.
+
+   The default pulse fades a block in and out, which at a glance reads like a
+   dimmed control rather than something arriving — on a phone, on a slow
+   connection, people tap it. A sweep only ever moves one way, so it reads as
+   progress even when nothing has finished yet.
+
+   Held still for anyone who has asked their device to stop animations. */
+@keyframes bf-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.bf-skeleton {
+  background-color: var(--muted);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--foreground) 7%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: bf-shimmer 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bf-skeleton {
+    animation: none;
+  }
+}
