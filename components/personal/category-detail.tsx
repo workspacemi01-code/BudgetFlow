@@ -66,7 +66,7 @@ export function CategoryDetail({
             </div>
             <div className="text-xs text-muted-foreground">
               {!budgeted
-                ? "spent — no amount set yet"
+                ? "spent · no budget set for this yet"
                 : over
                   ? `over budget · ${money(line.committed)} of ${money(line.planned)} used`
                   : `left · ${money(line.committed)} of ${money(line.planned)} used`}
@@ -227,7 +227,7 @@ function CategorySettings({ line, budgetId }: { line: PersonalLine; budgetId: st
         <input type="hidden" name="budgetId" value={budgetId} />
         <div className="min-w-0 flex-1 space-y-1">
           <label htmlFor={`planned-${line.id}`} className="text-xs font-semibold">
-            Amount budgeted for {line.name}
+            Budget for {line.name}
           </label>
           <Input
             id={`planned-${line.id}`}

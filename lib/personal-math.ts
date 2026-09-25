@@ -46,6 +46,27 @@ export interface BudgetTotals {
   overLines: PersonalLine[]
 }
 
+/**
+ * How much is left per day, and how many days are left.
+ *
+ * The single most useful number a budgeting app can show, and the one people
+ * actually act on: "₦220,000 left" means nothing until you know it has to
+ * cover twelve more days. Returns null before an amount is set, and once the
+ * period is over — a daily allowance for a month that has ended is noise.
+ */
+export function dailyAllowance(
+  remaining: number,
+  endDate: string,
+  today = new Date()
+): { daysLeft: number; perDay: number } | null {
+  const end = new Date(`${endDate}T23:59:59`)
+  const ms = end.getTime() - today.getTime()
+  if (ms <= 0) return null
+  // Today counts: on the last day of the month you still have today to spend it.
+  const daysLeft = Math.max(1, Math.ceil(ms / 86_400_000))
+  return { daysLeft, perDay: Math.max(0, remaining) / daysLeft }
+}
+
 /** What the whole budget adds up to. */
 export function budgetTotals(lines: PersonalLine[]): BudgetTotals {
   const planned = lines.reduce((sum, l) => sum + l.planned, 0)
@@ -63,4 +84,22 @@ export function budgetTotals(lines: PersonalLine[]): BudgetTotals {
     // saying even when the budget as a whole still has room.
     overLines: lines.filter((l) => isBudgeted(l) && l.remaining < 0),
   }
+}
+
+/**
+ * "Today", "Yesterday", then a short date.
+ *
+ * A raw 2026-09-25 next to a spend makes you do arithmetic to answer "was that
+ * the one I just typed" — which is exactly what you are checking for.
+ */
+export function dayLabel(iso: string, today = new Date()): string {
+  const asDay = (d: Date) => d.toISOString().slice(0, 10)
+  if (iso === asDay(today)) return "Today"
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (iso === asDay(yesterday)) return "Yesterday"
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+  })
 }

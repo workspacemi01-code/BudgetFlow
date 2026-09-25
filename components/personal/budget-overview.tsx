@@ -301,7 +301,7 @@ function LineRow({
         <div className="mt-1.5 text-[11px] text-muted-foreground tabular-nums">
           {budgeted
             ? `${money(line.committed)} of ${money(line.planned)}`
-            : "Tap to set an amount"}
+            : "No budget set — tap to add one"}
         </div>
       </div>
       <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
