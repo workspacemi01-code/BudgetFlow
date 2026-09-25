@@ -12,4 +12,6 @@ export interface FormState {
   unconfirmedEmail?: string
   /** An invitation link to show the inviter, so they can pass it on themselves. */
   inviteUrl?: string
+  /** Id of the row just created, so a form can carry on using it without a reload. */
+  createdId?: string
 }

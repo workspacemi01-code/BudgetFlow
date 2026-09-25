@@ -14,7 +14,7 @@ export default async function PersonalHomePage(props: PageProps<"/personal/[id]"
   const budget = pickBudget(budgets, id)
   if (!budget) notFound()
 
-  const [lines, entries] = await Promise.all([getLines(budget.id), getEntries(budget.id)])
+  const [lines, entries] = await Promise.all([getLines(budget.id), getEntries(budget.id, 5)])
   const lineName = new Map(lines.map((l) => [l.id, l.name]))
 
   return (
@@ -23,7 +23,7 @@ export default async function PersonalHomePage(props: PageProps<"/personal/[id]"
       lines={lines}
       totals={budgetTotals(lines)}
       // Just enough to confirm the last thing you typed actually saved.
-      recent={entries.slice(0, 5).map((e) => ({ ...e, lineName: lineName.get(e.lineId) ?? "" }))}
+      recent={entries.map((e) => ({ ...e, lineName: lineName.get(e.lineId) ?? "" }))}
       currency={profile.currency}
     />
   )

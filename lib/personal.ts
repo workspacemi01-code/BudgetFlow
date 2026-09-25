@@ -67,8 +67,13 @@ export async function requirePersonal(): Promise<{ user: Awaited<ReturnType<type
   return { user, profile }
 }
 
-/** Newest first, so the current month is the one you land on. */
-export async function getBudgets(): Promise<PersonalBudget[]> {
+/**
+ * Newest first, so the current month is the one you land on.
+ *
+ * cache() because the layout and the page inside it both need this, and without
+ * it every navigation paid for the same query twice.
+ */
+export const getBudgets = cache(async (): Promise<PersonalBudget[]> => {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("personal_budgets")
@@ -82,7 +87,7 @@ export async function getBudgets(): Promise<PersonalBudget[]> {
     startDate: String(b.start_date),
     endDate: String(b.end_date),
   }))
-}
+})
 
 /**
  * The budget to show when none was asked for: whichever period today falls in,
@@ -94,7 +99,7 @@ export function pickBudget(budgets: PersonalBudget[], id?: string): PersonalBudg
   return budgets.find((b) => b.startDate <= today && today <= b.endDate) ?? budgets[0] ?? null
 }
 
-export async function getLines(budgetId: string): Promise<PersonalLine[]> {
+export const getLines = cache(async (budgetId: string): Promise<PersonalLine[]> => {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from("v_personal_lines")
@@ -112,22 +117,29 @@ export async function getLines(budgetId: string): Promise<PersonalLine[]> {
     remaining: num(l.remaining),
     entryCount: num(l.entry_count),
   }))
-}
+})
 
-export async function getEntries(budgetId: string): Promise<PersonalEntry[]> {
+/**
+ * Spends in a budget, newest first.
+ *
+ * personal_entries has no budget_id — it hangs off a line — which used to mean
+ * fetching the lines, then fetching entries for those ids: two round trips to a
+ * database that is not in this building. `personal_lines!inner` does the join
+ * server-side, so it is one. RLS still scopes both sides to this user.
+ *
+ * `limit` is for screens that only show the last few; without it Home was
+ * loading a whole month of spending to render five rows.
+ */
+export const getEntries = cache(async (budgetId: string, limit?: number): Promise<PersonalEntry[]> => {
   const supabase = await createClient()
-  // personal_entries has no budget_id — it hangs off a line — so the filter
-  // goes through the line. RLS still scopes everything to this user.
-  const { data: lineRows } = await supabase.from("personal_lines").select("id").eq("budget_id", budgetId)
-  const ids = (lineRows ?? []).map((l) => String(l.id))
-  if (ids.length === 0) return []
-
-  const { data, error } = await supabase
+  let query = supabase
     .from("personal_entries")
-    .select("id, line_id, description, amount, spent_on, paid_at")
-    .in("line_id", ids)
+    .select("id, line_id, description, amount, spent_on, paid_at, personal_lines!inner(budget_id)")
+    .eq("personal_lines.budget_id", budgetId)
     .order("spent_on", { ascending: false })
     .order("created_at", { ascending: false })
+  if (limit) query = query.limit(limit)
+  const { data, error } = await query
   if (error) throw new Error(error.message)
   return (data ?? []).map((e) => ({
     id: String(e.id),
@@ -137,7 +149,7 @@ export async function getEntries(budgetId: string): Promise<PersonalEntry[]> {
     spentOn: String(e.spent_on),
     paidAt: e.paid_at ? String(e.paid_at) : null,
   }))
-}
+})
 
 // Re-exported so server code keeps one import for the whole model.
 export { budgetTotals, isBudgeted, type PersonalLine }

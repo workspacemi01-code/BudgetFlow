@@ -1,10 +1,11 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useActionState, useEffect, useState } from "react"
+import { useActionState, useEffect, useRef, useState, useTransition } from "react"
 
-import { addEntry } from "@/app/actions/personal"
+import { addEntry, addLine } from "@/app/actions/personal"
 import { FormMessage, SubmitButton } from "@/components/submit-button"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -41,7 +42,25 @@ export function AddSpendScreen({
   const router = useRouter()
   const [state, action] = useActionState(addEntry, {})
   const [lineId, setLineId] = useState(presetLineId ?? lines[0]?.id ?? "")
+  const [addingCategory, setAddingCategory] = useState(false)
+  const amountRef = useRef<HTMLInputElement>(null)
   const mark = CURRENCY_MARK[currency] ?? currency
+
+  // Focused by hand rather than with the autoFocus attribute, because
+  // autoFocus scrolls the element into view — on a phone that yanks the page
+  // as it settles, and again after every re-render that remounts the input.
+  // preventScroll puts the keypad up without moving anything.
+  useEffect(() => {
+    amountRef.current?.focus({ preventScroll: true })
+  }, [])
+
+  // A category made here should be the one selected, and the caret should go
+  // straight back to the amount — that is where you were.
+  const onCategoryCreated = (id: string) => {
+    setLineId(id)
+    setAddingCategory(false)
+    amountRef.current?.focus({ preventScroll: true })
+  }
 
   // A saved spend sends you back to where the number is, so you see it land.
   useEffect(() => {
@@ -78,13 +97,12 @@ export function AddSpendScreen({
         <div className="mt-2 flex items-center justify-center gap-1">
           <span className="text-3xl font-semibold text-muted-foreground">{mark}</span>
           <input
+            ref={amountRef}
             id="amount"
             name="amount"
             inputMode="decimal"
             placeholder="0"
             required
-            // The keypad is up before you have decided anything else.
-            autoFocus
             className="w-44 border-0 bg-transparent p-0 text-center text-5xl font-bold tabular-nums outline-none placeholder:text-muted-foreground/40 focus:ring-0"
           />
         </div>
@@ -113,7 +131,27 @@ export function AddSpendScreen({
               {line.name}
             </button>
           ))}
+
+          {/* Missing an envelope is the commonest reason to abandon recording a
+              spend. Make one here instead of losing what you already typed. */}
+          <button
+            type="button"
+            onClick={() => setAddingCategory((v) => !v)}
+            aria-expanded={addingCategory}
+            className="h-11 rounded-full border border-dashed px-4 text-sm font-medium text-muted-foreground active:bg-muted"
+          >
+            + New
+          </button>
         </div>
+
+        {addingCategory && (
+          <NewCategory
+            budgetId={budgetId}
+            currencyMark={mark}
+            onCreated={onCategoryCreated}
+            onCancel={() => setAddingCategory(false)}
+          />
+        )}
       </fieldset>
 
       <div className="space-y-2">
@@ -155,5 +193,89 @@ export function AddSpendScreen({
         Save spend
       </SubmitButton>
     </form>
+  )
+}
+
+/**
+ * Make a category without leaving the spend you are halfway through typing.
+ *
+ * Deliberately not a <form>: this sits inside the spend form, and a form nested
+ * in a form is invalid HTML — the browser throws the inner one away, so the
+ * button would have submitted the spend instead. It calls the action directly
+ * with a FormData it builds itself, which is what a nested form would have done
+ * anyway, minus the markup that cannot exist.
+ */
+function NewCategory({
+  budgetId,
+  currencyMark,
+  onCreated,
+  onCancel,
+}: {
+  budgetId: string
+  currencyMark: string
+  onCreated: (id: string) => void
+  onCancel: () => void
+}) {
+  const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const plannedRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    nameRef.current?.focus({ preventScroll: true })
+  }, [])
+
+  const submit = () => {
+    const name = nameRef.current?.value.trim() ?? ""
+    if (!name) {
+      setError("Give it a name — Airtime, Data, Rent.")
+      return
+    }
+    setError(null)
+    startTransition(async () => {
+      const data = new FormData()
+      data.set("budgetId", budgetId)
+      data.set("name", name)
+      data.set("planned", plannedRef.current?.value ?? "")
+      const result = await addLine({}, data)
+      if (result.error) setError(result.error)
+      else if (result.createdId) onCreated(result.createdId)
+    })
+  }
+
+  return (
+    <div className="mt-3 space-y-2 rounded-xl border bg-muted/30 p-3">
+      <FormMessage error={error ?? undefined} />
+      <div className="flex gap-2">
+        <Input
+          ref={nameRef}
+          placeholder="Name — Airtime, Data…"
+          aria-label="Category name"
+          className="h-12 min-w-0 flex-1 text-base"
+          // Enter should finish the category, not submit the spend behind it.
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              submit()
+            }
+          }}
+        />
+        <Input
+          ref={plannedRef}
+          inputMode="decimal"
+          placeholder={`${currencyMark} budget`}
+          aria-label="Amount to budget for it"
+          className="h-12 w-32 shrink-0 text-base"
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" className="h-10" onClick={onCancel} disabled={pending}>
+          Cancel
+        </Button>
+        <Button type="button" className="h-10" onClick={submit} disabled={pending}>
+          {pending ? "Adding…" : "Add category"}
+        </Button>
+      </div>
+    </div>
   )
 }
