@@ -97,6 +97,27 @@ function Choice({
 }
 
 /**
+ * Where someone who picked "Myself" on the signup page lands after confirming.
+ *
+ * No two-card question here — they already answered it. All that is left is how
+ * they want to budget.
+ */
+export function IndividualSetupCard({ email, confirmed }: { email: string; confirmed: boolean }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Set up your budget</CardTitle>
+        <CardDescription>Signed in as {email}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {confirmed && <FormMessage message="Your email is confirmed — welcome to BudgetFlow." />}
+        <IndividualSetup />
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
  * Monthly or yearly, and in what currency. That is everything needed to open
  * the first budget — the categories are seeded so the next screen has something
  * on it, and they can all be renamed or removed.
