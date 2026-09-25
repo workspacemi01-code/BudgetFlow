@@ -2,11 +2,13 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 
+import { AccountTypeChooser } from "@/components/account-type-chooser"
 import { AcceptInviteButton } from "@/components/accept-invite-button"
 import { FormMessage } from "@/components/submit-button"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ROLE_LABELS } from "@/lib/roles"
+import { getPersonalProfile } from "@/lib/personal"
 import { getMemberships, getPendingInvites, requireUser } from "@/lib/session"
 import { cn } from "@/lib/utils"
 
@@ -16,8 +18,22 @@ export default async function OnboardingPage(props: PageProps<"/onboarding">) {
   const { notice } = await props.searchParams
   const confirmed = notice === "confirmed"
   const user = await requireUser()
-  const [invites, memberships] = await Promise.all([getPendingInvites(), getMemberships()])
-  if (invites.length === 0 && memberships.length === 0) redirect(confirmed ? "/create-org?notice=confirmed" : "/create-org")
+  const [invites, memberships, personal] = await Promise.all([
+    getPendingInvites(),
+    getMemberships(),
+    getPersonalProfile(),
+  ])
+
+  // Step two of signing up. Someone with nothing yet has to say what kind of
+  // account this is before anything can be built for them: a company budget and
+  // a personal one share almost no screens, so guessing wrong means showing
+  // departments and approvals to a person budgeting their own rent.
+  if (invites.length === 0 && memberships.length === 0 && !personal) {
+    return <AccountTypeChooser email={user.email} confirmed={confirmed} />
+  }
+
+  // Individual, and nothing else — go straight to it.
+  if (invites.length === 0 && memberships.length === 0) redirect("/personal")
 
   return (
     <Card>

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node supabase/tests/0001_init.test.mjs && node supabase/tests/0003_invitations.test.mjs"
+    "test": "node supabase/tests/0001_init.test.mjs && node supabase/tests/0003_invitations.test.mjs && node supabase/tests/0004_personal_budgets.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
