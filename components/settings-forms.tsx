@@ -18,7 +18,7 @@ const initial: FormState = {}
 export function OrgSettingsForm({
   org,
 }: {
-  org: { name: string; currency: string; brandLabel: string; allowOverBudget: boolean }
+  org: { name: string; currency: string; allowOverBudget: boolean }
 }) {
   const [state, action] = useActionState(updateOrganization, initial)
   return (
@@ -34,9 +34,6 @@ export function OrgSettingsForm({
             </option>
           ))}
         </select>
-      </Field>
-      <Field label="Name for the level under departments" htmlFor="org-brand" hint="Brand, Project, Cost center…">
-        <Input id="org-brand" name="brandLabel" defaultValue={org.brandLabel} required maxLength={40} className="h-11" />
       </Field>
       <label className="flex items-start gap-3 text-sm">
         <input

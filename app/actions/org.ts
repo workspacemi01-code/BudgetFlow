@@ -64,15 +64,17 @@ export async function updateOrganization(_: FormState, formData: FormData): Prom
 
   const name = String(formData.get("name") ?? "").trim()
   const currency = String(formData.get("currency") ?? "")
-  const brandLabel = String(formData.get("brandLabel") ?? "").trim()
   if (name.length < 2) return { error: "Enter the organization's name." }
   if (!CURRENCIES.some((c) => c.code === currency)) return { error: "Pick a currency." }
-  if (brandLabel.length < 1 || brandLabel.length > 40) return { error: "Enter a label such as Brand, Project or Cost center." }
 
+  // brand_label is no longer written. The field that set it is gone, so reading
+  // it back would send an empty string — and the validation that used to guard
+  // it would then have refused every settings save. The column itself is left
+  // alone: dropping it would mean a migration against live business data.
   const supabase = await createClient()
   const { error } = await supabase
     .from("organizations")
-    .update({ name, currency, brand_label: brandLabel, allow_over_budget: formData.get("allowOverBudget") === "on" })
+    .update({ name, currency, allow_over_budget: formData.get("allowOverBudget") === "on" })
     .eq("id", ctx.org.id)
   if (error) return { error: error.message }
   revalidatePath("/", "layout")
