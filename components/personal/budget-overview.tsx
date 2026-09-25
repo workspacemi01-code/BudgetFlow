@@ -96,14 +96,40 @@ export function BudgetOverview({
       {lines.length > 0 && <QuickSpend budgetId={budget.id} lines={lines} />}
 
       <section className="space-y-2">
-        <h2 className="px-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Your budget
-        </h2>
+        <div className="flex items-baseline justify-between px-1">
+          <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Your categories
+          </h2>
+          {/* At the top of the list, not under it. Buried at the bottom of a
+              scrolling page it was invisible on a phone, and adding a category
+              is the main thing this screen is for. */}
+          {!addingCategory && (
+            <button
+              type="button"
+              onClick={() => setAddingCategory(true)}
+              className="text-xs font-semibold text-primary"
+            >
+              + Add category
+            </button>
+          )}
+        </div>
+
+        {addingCategory && (
+          <AddCategoryForm budgetId={budget.id} onDone={() => setAddingCategory(false)} />
+        )}
 
         {lines.length === 0 ? (
           <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              Add what you spend on — rent, food, transport — and give each one an amount.
+            <CardContent className="space-y-3 py-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                Add what you spend on — rent, food, transport — and give each one an amount.
+              </p>
+              {!addingCategory && (
+                <Button className="h-11" onClick={() => setAddingCategory(true)}>
+                  <Plus className="size-4" aria-hidden />
+                  Add your first category
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -117,14 +143,6 @@ export function BudgetOverview({
         )}
       </section>
 
-      {addingCategory ? (
-        <AddCategoryForm budgetId={budget.id} onDone={() => setAddingCategory(false)} />
-      ) : (
-        <Button variant="outline" className="h-12 w-full" onClick={() => setAddingCategory(true)}>
-          <Plus className="size-4" aria-hidden />
-          Add a category
-        </Button>
-      )}
     </div>
   )
 }

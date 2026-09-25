@@ -12,9 +12,9 @@ import { getBudgets, pickBudget, requirePersonal } from "@/lib/personal"
  */
 export default async function BudgetLayout(props: LayoutProps<"/personal/[id]">) {
   const { id } = await props.params
-  await requirePersonal()
-
-  const budgets = await getBudgets()
+  // Independent of each other, so they go at the same time rather than one
+  // after the other — two round trips become one wait.
+  const [, budgets] = await Promise.all([requirePersonal(), getBudgets()])
   const budget = pickBudget(budgets, id)
   if (!budget) notFound()
 

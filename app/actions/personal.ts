@@ -60,14 +60,20 @@ export async function addLine(_: FormState, formData: FormData): Promise<FormSta
   if (planned === null) return { error: "Enter the amount as a number." }
 
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("personal_lines")
     .insert({ budget_id: budgetId, user_id: user.id, name, planned })
+    .select("id")
+    .single()
   // 23505 is the case-insensitive unique index: the same envelope twice.
   if (error) return { error: error.code === "23505" ? `You already have ${name} in this budget.` : error.message }
 
-  revalidatePath(`/personal/${budgetId}`)
-  return { message: `${name} added.` }
+  // Every screen under the budget shows categories, so refresh the branch
+  // rather than one page — otherwise the new one is missing from the tab you
+  // switch to next.
+  revalidatePath(`/personal/${budgetId}`, "layout")
+  // Handed back so the spend form can select what you just made.
+  return { message: `${name} added.`, createdId: data ? String(data.id) : undefined }
 }
 
 export async function updateLine(_: FormState, formData: FormData): Promise<FormState> {

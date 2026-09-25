@@ -10,6 +10,40 @@ function isPublic(path: string) {
   return path === "/" || PUBLIC_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }
 
+/** Seconds of life left below which we stop trusting the cookie and go and refresh. */
+const REFRESH_WINDOW = 120
+
+/**
+ * The signed-in user according to the session cookie alone, or null when the
+ * cookie is missing, unreadable, or close enough to expiry that it needs a real
+ * refresh.
+ *
+ * Null means "ask Supabase properly", never "signed out" — the caller makes the
+ * network call in that case, so a bad cookie costs correctness nothing.
+ */
+function userFromCookie(request: NextRequest): { id: string } | null {
+  // @supabase/ssr splits a long cookie into .0, .1 … which have to be rejoined.
+  const parts = request.cookies
+    .getAll()
+    .filter((c) => /^sb-.*-auth-token(\.\d+)?$/.test(c.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  if (parts.length === 0) return null
+
+  try {
+    let raw = parts.map((c) => c.value).join("")
+    if (raw.startsWith("base64-")) raw = atob(raw.slice("base64-".length))
+    const token = (JSON.parse(raw) as { access_token?: string }).access_token
+    if (!token) return null
+
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")))
+    if (!payload?.sub || typeof payload.exp !== "number") return null
+    if (payload.exp - Date.now() / 1000 < REFRESH_WINDOW) return null
+    return { id: String(payload.sub) }
+  } catch {
+    return null
+  }
+}
+
 /**
  * Refreshes the Supabase session cookie on every request and keeps signed-out
  * visitors on public pages. Pages still check the user themselves — this is
@@ -43,9 +77,23 @@ export async function proxy(request: NextRequest) {
     },
   })
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // getUser() asks Supabase Auth over the network to verify the token — a round
+  // trip on *every* request, measured at 200-500ms, paid before a single line of
+  // the page runs and again on each tab you touch.
+  //
+  // It buys two things: refreshing a token that is about to expire, and being
+  // certain the token is genuine. The second is not this middleware's job — as
+  // the comment above says, this is the optimistic redirect, and every page
+  // re-checks the user against the database where RLS decides what they see.
+  //
+  // So read the expiry out of the cookie instead. Comfortably valid, which is
+  // almost always, and the network call is skipped entirely. Near expiry or
+  // unreadable, and the real call runs so the refresh still happens.
+  let user: { id: string } | null = userFromCookie(request)
+  if (!user) {
+    const { data } = await supabase.auth.getUser()
+    user = data.user ? { id: data.user.id } : null
+  }
 
   const redirectTo = (pathname: string, params: Record<string, string> = {}) => {
     const url = request.nextUrl.clone()
