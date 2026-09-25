@@ -50,7 +50,7 @@ export function AccountTypeChooser({ email, confirmed }: { email: string; confir
           />
         </div>
 
-        {kind === "individual" && <IndividualSetup autoFocus />}
+        {kind === "individual" && <IndividualSetup />}
         {kind === "business" && (
           <Link
             href="/create-org"
@@ -122,7 +122,7 @@ export function IndividualSetupCard({ email, confirmed }: { email: string; confi
  * the first budget — the categories are seeded so the next screen has something
  * on it, and they can all be renamed or removed.
  */
-function IndividualSetup({ autoFocus = false }: { autoFocus?: boolean }) {
+function IndividualSetup() {
   const [state, action] = useActionState(startBudget, {})
 
   return (
