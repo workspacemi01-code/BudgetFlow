@@ -33,7 +33,7 @@ export function GetStarted({ role, orgName }: { role: Role; orgName: string }) {
     {
       icon: ListTree,
       title: "Split budgets into lines",
-      body: "Break each department down by brand or project and category. Spend is raised against a line.",
+      body: "Break each department down by category. Spend is raised against a line.",
       href: "/budget-lines",
       cta: "Add budget lines",
     },

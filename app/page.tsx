@@ -34,7 +34,7 @@ const PREVIEW = {
 }
 
 const FEATURES = [
-  { icon: Building2, title: "Department budgets", body: "Set an annual budget per department and split it into brand and category lines." },
+  { icon: Building2, title: "Department budgets", body: "Set an annual budget per department and split it into category lines." },
   { icon: CheckCheck, title: "Approval workflow", body: "Spend is raised, approved by Finance, then paid — every step is tracked." },
   { icon: ListTree, title: "Always-accurate balances", body: "Spent, committed and available are calculated live, never typed in by hand." },
   { icon: Smartphone, title: "Approve from your phone", body: "Managers raise and approve spend from any device. Installs like an app." },

@@ -63,7 +63,6 @@ export default async function SettingsPage() {
     { label: "Organization", value: ctx.org.name },
     { label: "Currency", value: CURRENCIES.find((c) => c.code === ctx.org.currency)?.name ?? ctx.org.currency },
     { label: "Budget period", value: ctx.period?.name ?? "—" },
-    { label: "Name for the level under departments", value: ctx.org.brand_label },
     { label: "Over-budget approvals", value: ctx.org.allow_over_budget ? "Allowed for owners and admins" : "Blocked" },
   ]
 
@@ -83,7 +82,6 @@ export default async function SettingsPage() {
                 org={{
                   name: ctx.org.name,
                   currency: ctx.org.currency,
-                  brandLabel: ctx.org.brand_label,
                   allowOverBudget: ctx.org.allow_over_budget,
                 }}
               />

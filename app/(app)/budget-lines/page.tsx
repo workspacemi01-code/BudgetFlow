@@ -5,7 +5,7 @@ import { AddLineDialog } from "@/components/budget-dialogs"
 import { PageHeader } from "@/components/page-header"
 import { SpendLegend, UtilBar } from "@/components/util-bar"
 import { formatMoney } from "@/lib/format"
-import { getBrands, getCategories, getDepartmentSummaries, getLineTotals, type LineTotal } from "@/lib/queries"
+import { getCategories, getDepartmentSummaries, getLineTotals, type LineTotal } from "@/lib/queries"
 import { canManageLines, isApprover } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
 import { cn } from "@/lib/utils"
@@ -29,10 +29,12 @@ export default async function BudgetLinesPage() {
   const currency = ctx.org.currency
   const money = (value: number, compact = false) => formatMoney(value, currency, { compact })
 
-  const [lines, departments, brands, categories] = await Promise.all([
+  // No getBrands: the add-line form no longer asks for one, so fetching them
+  // was a query for a field that does not exist any more. Lines that already
+  // carry a brand still show it — that comes through v_budget_line_totals.
+  const [lines, departments, categories] = await Promise.all([
     getLineTotals(ctx),
     getDepartmentSummaries(ctx),
-    getBrands(ctx),
     getCategories(ctx),
   ])
   const editable = departments.filter((d) => !ctx.departmentIds || ctx.departmentIds.includes(d.id))
@@ -41,14 +43,12 @@ export default async function BudgetLinesPage() {
     <>
       <PageHeader
         title="Budget lines"
-        description={`Each department budget split by ${ctx.org.brand_label.toLowerCase()} and category. Spend is always raised against a line.`}
+        description="Each department budget split by category. Spend is always raised against a line."
         actions={
           canManageLines(ctx.role) ? (
             <AddLineDialog
               currency={currency}
-              brandLabel={ctx.org.brand_label}
               departments={editable.map((d) => ({ id: d.id, name: d.name }))}
-              brands={brands.map((b) => ({ name: b.name, departmentId: b.departmentId }))}
               categories={categories.map((c) => c.name)}
               canAddCategory={isApprover(ctx.role)}
             />

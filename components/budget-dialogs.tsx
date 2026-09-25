@@ -64,25 +64,20 @@ export function AddDepartmentDialog({ currency }: { currency: string }) {
 
 interface LineDialogProps {
   currency: string
-  brandLabel: string
   departments: { id: string; name: string }[]
-  brands: { name: string; departmentId: string }[]
   categories: string[]
   canAddCategory: boolean
 }
 
 function AddLineForm({
   currency,
-  brandLabel,
   departments,
-  brands,
   categories,
   canAddCategory,
   onDone,
 }: LineDialogProps & { onDone: () => void }) {
   const [state, action] = useDialogAction(addBudgetLine, onDone)
   const [departmentId, setDepartmentId] = useState(departments.length === 1 ? departments[0].id : "")
-  const departmentBrands = brands.filter((b) => b.departmentId === departmentId)
 
   return (
     <form action={action} className="grid gap-4">
@@ -103,18 +98,11 @@ function AddLineForm({
           ))}
         </select>
       </Field>
-      <Field
-        label={`${brandLabel} (optional)`}
-        htmlFor="line-brand"
-        hint={`Pick an existing ${brandLabel.toLowerCase()} or type a new one.`}
-      >
-        <Input id="line-brand" name="brand" list="line-brands" className="h-11" autoComplete="off" />
-        <datalist id="line-brands">
-          {departmentBrands.map((b) => (
-            <option key={b.name} value={b.name} />
-          ))}
-        </datalist>
-      </Field>
+      {/* No brand field. It was optional, and an optional question about a
+          level most people here do not think in still reads as something you
+          have to deal with before reaching the one that matters — the
+          category. Lines that already have a brand keep it, and still show
+          it; new ones are simply Department › Category. */}
       <Field
         label="Category"
         htmlFor="line-category"
