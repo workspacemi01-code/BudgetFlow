@@ -9,6 +9,7 @@ import { cache } from "react"
 import { redirect } from "next/navigation"
 
 import { createClient } from "@/lib/supabase/server"
+import { budgetTotals, isBudgeted, type PersonalLine } from "@/lib/personal-math"
 import { requireUser } from "@/lib/session"
 
 export type Cadence = "monthly" | "yearly"
@@ -25,22 +26,6 @@ export interface PersonalBudget {
   cadence: Cadence
   startDate: string
   endDate: string
-}
-
-export interface PersonalLine {
-  id: string
-  name: string
-  /** What was set aside. */
-  planned: number
-  /** Already paid. */
-  spent: number
-  /** Recorded but not paid yet. */
-  upcoming: number
-  /** spent + upcoming — everything this line is on the hook for. */
-  committed: number
-  /** planned − committed. Negative means over. */
-  remaining: number
-  entryCount: number
 }
 
 export interface PersonalEntry {
@@ -154,20 +139,5 @@ export async function getEntries(budgetId: string): Promise<PersonalEntry[]> {
   }))
 }
 
-/** What the whole budget adds up to. */
-export function budgetTotals(lines: PersonalLine[]) {
-  const planned = lines.reduce((sum, l) => sum + l.planned, 0)
-  const spent = lines.reduce((sum, l) => sum + l.spent, 0)
-  const upcoming = lines.reduce((sum, l) => sum + l.upcoming, 0)
-  const committed = spent + upcoming
-  return {
-    planned,
-    spent,
-    upcoming,
-    committed,
-    remaining: planned - committed,
-    // Counted per line, not on the total: being ₦12,000 over on food is worth
-    // saying even when the budget as a whole still has room.
-    overLines: lines.filter((l) => l.remaining < 0),
-  }
-}
+// Re-exported so server code keeps one import for the whole model.
+export { budgetTotals, isBudgeted, type PersonalLine }
