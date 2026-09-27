@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 
+import { BackLink } from "@/components/back-link"
 import { PageHeader } from "@/components/page-header"
 import { TransactionForm } from "@/components/transaction-form"
 import { Card, CardContent } from "@/components/ui/card"
@@ -18,6 +19,9 @@ export default async function NewTransactionPage() {
 
   return (
     <div className="max-w-2xl">
+      {/* On a phone this screen is reached from the bottom bar's + button and
+          had no exit at all — the tab bar does not cover it. */}
+      <BackLink fallbackHref="/transactions" label="Transactions" />
       <PageHeader
         title="New transaction"
         description="Raise spend against a budget line. It counts against the budget once Finance approves it."

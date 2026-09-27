@@ -1,7 +1,7 @@
 "use client"
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 /**
  * The client-side cache.
@@ -13,6 +13,16 @@ import { useState } from "react"
  * change it, and every mutation invalidates the cache itself, so re-fetching on
  * a timer would spend a round trip to learn nothing.
  */
+/**
+ * How many entries were already in history when this session started.
+ *
+ * Recorded here because this mounts once, before any in-app navigation. A back
+ * button needs to know whether there is anywhere of *ours* to go back to, and
+ * history.length alone cannot tell it: a freshly opened tab already has
+ * about:blank behind it, so "length > 1" sends you to a blank page.
+ */
+export const HISTORY_BASELINE_KEY = "bf:history-baseline"
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
     () =>
@@ -31,5 +41,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
       }),
   )
+  useEffect(() => {
+    // Only the first time in this tab — later mounts must not move the mark.
+    if (sessionStorage.getItem(HISTORY_BASELINE_KEY) === null) {
+      sessionStorage.setItem(HISTORY_BASELINE_KEY, String(window.history.length))
+    }
+  }, [])
+
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
