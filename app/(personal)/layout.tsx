@@ -1,5 +1,3 @@
-import Link from "next/link"
-
 import { Logo } from "@/components/logo"
 import { UserMenu } from "@/components/personal-user-menu"
 import { OfflineBar } from "@/components/personal/offline-bar"
@@ -22,9 +20,10 @@ export default async function PersonalLayout({ children }: { children: React.Rea
       <OfflineBar />
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-2xl items-center justify-between gap-3 px-4">
-          <Link href="/personal" aria-label="My budget">
-            <Logo />
-          </Link>
+          {/* Logo renders its own <Link>, so wrapping it in another produced
+              an <a> inside an <a> — invalid HTML, and React warns that it
+              breaks hydration. It takes the destination as a prop instead. */}
+          <Logo href="/personal" />
           <UserMenu name={profile.displayName ?? user.name} email={user.email} />
         </div>
       </header>
