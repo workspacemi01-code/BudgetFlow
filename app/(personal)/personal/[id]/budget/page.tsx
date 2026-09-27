@@ -1,28 +1,27 @@
-import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+"use client"
+
+import { use } from "react"
 
 import { BudgetOverview } from "@/components/personal/budget-overview"
-import { budgetTotals, getBudgets, getLines, pickBudget, requirePersonal } from "@/lib/personal"
+import { PersonalScreen } from "@/components/personal/screen"
+import { budgetTotals } from "@/lib/personal-math"
 
-export const metadata: Metadata = { title: "Budget" }
-
-export default async function BudgetTabPage(props: PageProps<"/personal/[id]/budget">) {
-  const { id } = await props.params
-  const { profile } = await requirePersonal()
-
-  const budgets = await getBudgets()
-  const budget = pickBudget(budgets, id)
-  if (!budget) notFound()
-
-  const lines = await getLines(budget.id)
+export default function BudgetTabPage(props: PageProps<"/personal/[id]/budget">) {
+  const { id } = use(props.params)
 
   return (
-    <BudgetOverview
-      budget={budget}
-      budgets={budgets}
-      lines={lines}
-      totals={budgetTotals(lines)}
-      currency={profile.currency}
-    />
+    <PersonalScreen budgetId={id}>
+      {({ budget, budgets, lines, profile }) =>
+        budget ? (
+          <BudgetOverview
+            budget={budget}
+            budgets={budgets}
+            lines={lines}
+            totals={budgetTotals(lines)}
+            currency={profile.currency}
+          />
+        ) : null
+      }
+    </PersonalScreen>
   )
 }

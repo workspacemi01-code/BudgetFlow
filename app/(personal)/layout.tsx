@@ -2,6 +2,7 @@ import Link from "next/link"
 
 import { Logo } from "@/components/logo"
 import { UserMenu } from "@/components/personal-user-menu"
+import { OfflineBar } from "@/components/personal/offline-bar"
 import { requirePersonal } from "@/lib/personal"
 
 /**
@@ -18,6 +19,7 @@ export default async function PersonalLayout({ children }: { children: React.Rea
 
   return (
     <div className="flex min-h-dvh flex-col bg-muted/30">
+      <OfflineBar />
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-2xl items-center justify-between gap-3 px-4">
           <Link href="/personal" aria-label="My budget">

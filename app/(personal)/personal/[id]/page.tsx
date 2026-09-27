@@ -1,30 +1,33 @@
-import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+"use client"
+
+import { use } from "react"
 
 import { HomeScreen } from "@/components/personal/home-screen"
-import { budgetTotals, getBudgets, getEntries, getLines, pickBudget, requirePersonal } from "@/lib/personal"
+import { PersonalScreen } from "@/components/personal/screen"
+import { budgetTotals } from "@/lib/personal-math"
 
-export const metadata: Metadata = { title: "My budget" }
-
-export default async function PersonalHomePage(props: PageProps<"/personal/[id]">) {
-  const { id } = await props.params
-  const { profile } = await requirePersonal()
-
-  const budgets = await getBudgets()
-  const budget = pickBudget(budgets, id)
-  if (!budget) notFound()
-
-  const [lines, entries] = await Promise.all([getLines(budget.id), getEntries(budget.id, 5)])
-  const lineName = new Map(lines.map((l) => [l.id, l.name]))
+export default function PersonalHomePage(props: PageProps<"/personal/[id]">) {
+  const { id } = use(props.params)
 
   return (
-    <HomeScreen
-      budget={budget}
-      lines={lines}
-      totals={budgetTotals(lines)}
-      // Just enough to confirm the last thing you typed actually saved.
-      recent={entries.map((e) => ({ ...e, lineName: lineName.get(e.lineId) ?? "" }))}
-      currency={profile.currency}
-    />
+    <PersonalScreen budgetId={id}>
+      {({ budget, lines, entries, profile }) => {
+        if (!budget) return null
+        const lineName = new Map(lines.map((l) => [l.id, l.name]))
+        return (
+          <HomeScreen
+            budget={budget}
+            lines={lines}
+            totals={budgetTotals(lines)}
+            // Just enough to confirm the last thing you typed actually saved.
+            recent={entries.slice(0, 5).map((e) => ({
+              ...e,
+              lineName: lineName.get(e.lineId) ?? "",
+            }))}
+            currency={profile.currency}
+          />
+        )
+      }}
+    </PersonalScreen>
   )
 }
