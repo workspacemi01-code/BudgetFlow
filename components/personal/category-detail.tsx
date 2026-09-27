@@ -1,10 +1,10 @@
 "use client"
 
-import Link from "next/link"
 import { useActionState, useState } from "react"
-import { ArrowLeft, Check, Trash2, Undo2 } from "lucide-react"
+import { Check, Trash2, Undo2 } from "lucide-react"
 
 import { addEntry, markPaid, removeEntry, removeLine, updateLine } from "@/app/actions/personal"
+import { BackLink } from "@/components/back-link"
 import { FormMessage, SubmitButton } from "@/components/submit-button"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -44,13 +44,9 @@ export function CategoryDetail({
 
   return (
     <div className="space-y-4">
-      <Link
-        href={`/personal/${budgetId}`}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground"
-      >
-        <ArrowLeft className="size-4" aria-hidden />
-        {budgetName}
-      </Link>
+      {/* Returns to wherever you came from — Home, Budget or Activity — rather
+          than always to the budget screen. */}
+      <BackLink fallbackHref={`/personal/${budgetId}`} label={budgetName} />
 
       <Card>
         <CardContent className="space-y-3 py-5">

@@ -5,6 +5,7 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 
 import { addEntry, addLine } from "@/app/actions/personal"
 import { FormMessage, SubmitButton } from "@/components/submit-button"
+import { BackLink } from "@/components/back-link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -87,6 +88,7 @@ export function AddSpendScreen({
 
   return (
     <form action={action} className="space-y-5">
+      <BackLink fallbackHref={`/personal/${budgetId}`} />
       <input type="hidden" name="budgetId" value={budgetId} />
       <input type="hidden" name="lineId" value={lineId} />
 
