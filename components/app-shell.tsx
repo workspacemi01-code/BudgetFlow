@@ -246,6 +246,10 @@ export function AppShell({
   trialDaysLeft: number | null
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
+  // Switching reloads the whole shell, so it needs its own pending state and
+  // the same busy overlay the sidebar switcher uses — otherwise a phone tap
+  // looks like nothing happened for the second it takes.
+  const [switching, startSwitch] = useTransition()
   const approver = isApprover(org.role)
   const nav = NAV.filter((item) => !item.approverOnly || approver)
 
@@ -297,6 +301,8 @@ export function AppShell({
         <main className="mx-auto w-full max-w-7xl px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:pb-10">{children}</main>
       </div>
 
+      {switching && <BusyOverlay label="Switching organization…" />}
+
       {/* Mobile / tablet bottom tab bar */}
       <nav
         aria-label="Primary"
@@ -334,12 +340,44 @@ export function AppShell({
               </SheetHeader>
               <div className="space-y-3 px-4">
                 <NavLinks items={nav} pendingCount={pendingCount} onNavigate={() => setMoreOpen(false)} />
+
+                {/* The switcher itself, not a link to a page that has one.
+                    The organization dropdown lives in the sidebar, which is
+                    hidden below lg — so on a phone the only route to another
+                    organization was a detour through /onboarding, and most
+                    people reasonably concluded it could not be done. */}
+                {orgs.length > 1 && (
+                  <div className="border-t pt-3">
+                    <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">
+                      Organizations
+                    </p>
+                    {orgs.map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        disabled={switching}
+                        onClick={() => {
+                          setMoreOpen(false)
+                          if (o.id !== org.id) startSwitch(() => switchOrg(o.id))
+                        }}
+                        className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm hover:bg-muted/60 disabled:opacity-50"
+                      >
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-[11px] font-semibold text-primary">
+                          {initials(o.name)}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{o.name}</span>
+                        {o.id === org.id && <Check className="size-4 text-primary" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <Link
                   href="/onboarding"
                   onClick={() => setMoreOpen(false)}
                   className="block px-3 text-sm text-muted-foreground hover:text-foreground"
                 >
-                  {orgs.length > 1 ? "Switch, join or create an organization" : "Join or create an organization"}
+                  Join or create an organization
                 </Link>
               </div>
             </SheetContent>
