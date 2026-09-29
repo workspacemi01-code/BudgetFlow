@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowRight, TrendingDown } from "lucide-react"
+import { ArrowRight, ChevronRight, TrendingDown } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { formatMoney } from "@/lib/format"
@@ -70,8 +70,18 @@ export function HomeScreen({
             cta="Set up your budget"
           />
         ) : (
-          <ul className="space-y-2">
-            {topLines(lines).map((line) => (
+          /* Every category, not the busiest four. Picking the one you are
+             about to spend on is the common errand, and sending people to
+             another screen for it made the section decorative. Taller than
+             about six and it scrolls in place rather than pushing Recent off
+             the bottom. */
+          <ul
+            className={cn(
+              "space-y-2",
+              lines.length > 6 && "max-h-[22rem] overflow-y-auto overscroll-contain pr-1"
+            )}
+          >
+            {sortedLines(lines).map((line) => (
               <li key={line.id}>
                 <MiniLine line={line} budgetId={budget.id} money={money} />
               </li>
@@ -111,16 +121,14 @@ export function HomeScreen({
   )
 }
 
-/** The busiest four — a phone screen is not a spreadsheet. */
-function topLines(lines: PersonalLine[]): PersonalLine[] {
-  return [...lines]
-    .sort((a, b) => {
-      const aOver = isBudgeted(a) && a.remaining < 0
-      const bOver = isBudgeted(b) && b.remaining < 0
-      if (aOver !== bOver) return aOver ? -1 : 1
-      return b.committed - a.committed
-    })
-    .slice(0, 4)
+/** Trouble first, then the busiest — the order you would look in. */
+function sortedLines(lines: PersonalLine[]): PersonalLine[] {
+  return [...lines].sort((a, b) => {
+    const aOver = isBudgeted(a) && a.remaining < 0
+    const bOver = isBudgeted(b) && b.remaining < 0
+    if (aOver !== bOver) return aOver ? -1 : 1
+    return b.committed - a.committed
+  })
 }
 
 function Headline({
@@ -248,38 +256,46 @@ function MiniLine({
   const used = budgeted ? Math.min(100, (line.committed / line.planned) * 100) : 0
 
   return (
+    /* Same row as the budget screen, so a category behaves the same wherever
+       it is tapped. */
     <Link
       href={`/personal/${budgetId}/category/${line.id}`}
-      className="block rounded-xl border bg-card px-4 py-3 active:bg-muted/50"
+      className={cn(
+        "flex items-center gap-3 rounded-xl border bg-card px-4 py-3 transition-colors active:bg-muted/50",
+        over && "border-red-300 dark:border-red-500/40"
+      )}
     >
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="truncate text-sm font-medium">{line.name}</span>
-        <span
-          className={cn(
-            "shrink-0 text-sm tabular-nums",
-            over ? "font-semibold text-red-600 dark:text-red-400" : "text-muted-foreground"
-          )}
-        >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="truncate text-sm font-medium">{line.name}</span>
+          <span
+            className={cn(
+              "shrink-0 text-sm tabular-nums",
+              over ? "font-semibold text-red-600 dark:text-red-400" : "text-muted-foreground"
+            )}
+          >
+            {budgeted
+              ? over
+                ? `${money(Math.abs(line.remaining))} over`
+                : `${money(line.remaining)} left`
+              : `${money(line.committed)} spent`}
+          </span>
+        </div>
+        {budgeted && (
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn("h-full rounded-full", over ? "bg-red-500" : "bg-primary")}
+              style={{ width: `${over ? 100 : used}%` }}
+            />
+          </div>
+        )}
+        <div className="mt-1.5 text-[11px] text-muted-foreground tabular-nums">
           {budgeted
-            ? over
-              ? `${money(Math.abs(line.remaining))} over`
-              : `${money(line.remaining)} left`
-            : money(line.committed)}
-        </span>
+            ? `${money(line.committed)} of ${money(line.planned)}`
+            : "No budget set — tap to add one"}
+        </div>
       </div>
-      {budgeted && (
-        <div className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-          {money(line.committed)} of {money(line.planned)}
-        </div>
-      )}
-      {budgeted && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-          <div
-            className={cn("h-full rounded-full", over ? "bg-red-500" : "bg-primary")}
-            style={{ width: `${over ? 100 : used}%` }}
-          />
-        </div>
-      )}
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
     </Link>
   )
 }
