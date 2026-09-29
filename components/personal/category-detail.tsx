@@ -1,6 +1,8 @@
 "use client"
 
-import { useActionState, useState } from "react"
+import { useState } from "react"
+
+import { usePersonalAction } from "@/hooks/use-personal"
 import { Check, Trash2, Undo2 } from "lucide-react"
 
 import { addEntry, markPaid, removeEntry, removeLine, updateLine } from "@/app/actions/personal"
@@ -106,7 +108,7 @@ export function CategoryDetail({
 }
 
 function AddSpend({ lineId, budgetId }: { lineId: string; budgetId: string }) {
-  const [state, action] = useActionState(addEntry, {})
+  const [state, action] = usePersonalAction(addEntry, {})
 
   return (
     <Card>
@@ -155,8 +157,8 @@ function EntryRow({
   budgetId: string
   money: (v: number) => string
 }) {
-  const [payState, pay] = useActionState(markPaid, {})
-  const [removeState, remove] = useActionState(removeEntry, {})
+  const [payState, pay] = usePersonalAction(markPaid, {})
+  const [removeState, remove] = usePersonalAction(removeEntry, {})
   const paid = Boolean(entry.paidAt)
 
   return (
@@ -212,8 +214,8 @@ function EntryRow({
  * away by accident.
  */
 function CategorySettings({ line, budgetId }: { line: PersonalLine; budgetId: string }) {
-  const [updateState, update] = useActionState(updateLine, {})
-  const [removeState, remove] = useActionState(removeLine, {})
+  const [updateState, update] = usePersonalAction(updateLine, {})
+  const [removeState, remove] = usePersonalAction(removeLine, {})
   const [confirming, setConfirming] = useState(false)
 
   return (

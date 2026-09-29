@@ -1,6 +1,8 @@
 "use client"
 
-import { useActionState, useState } from "react"
+import { useState } from "react"
+
+import { usePersonalAction } from "@/hooks/use-personal"
 import { Check, Search, Trash2, Undo2 } from "lucide-react"
 
 import { markPaid, removeEntry } from "@/app/actions/personal"
@@ -121,8 +123,8 @@ function Row({
   budgetId: string
   money: (v: number) => string
 }) {
-  const [payState, pay] = useActionState(markPaid, {})
-  const [removeState, remove] = useActionState(removeEntry, {})
+  const [payState, pay] = usePersonalAction(markPaid, {})
+  const [removeState, remove] = usePersonalAction(removeEntry, {})
   const paid = Boolean(entry.paidAt)
 
   return (

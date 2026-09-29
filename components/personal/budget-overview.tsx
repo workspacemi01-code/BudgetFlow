@@ -2,7 +2,9 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useActionState, useState } from "react"
+import { useState } from "react"
+
+import { usePersonalAction } from "@/hooks/use-personal"
 import { ChevronRight, Plus } from "lucide-react"
 
 import { addEntry, addLine } from "@/app/actions/personal"
@@ -216,7 +218,7 @@ function Summary({ totals, money }: { totals: Totals; money: (v: number) => stri
  * you are typing it in, the money has usually gone.
  */
 function QuickSpend({ budgetId, lines }: { budgetId: string; lines: PersonalLine[] }) {
-  const [state, action] = useActionState(addEntry, {})
+  const [state, action] = usePersonalAction(addEntry, {})
 
   return (
     <Card>
@@ -328,7 +330,7 @@ function LineRow({
 }
 
 function AddCategoryForm({ budgetId, onDone }: { budgetId: string; onDone: () => void }) {
-  const [state, action] = useActionState(addLine, {})
+  const [state, action] = usePersonalAction(addLine, {})
 
   return (
     <Card>

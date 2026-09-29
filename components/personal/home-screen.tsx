@@ -195,16 +195,40 @@ function Headline({
           />
         </div>
 
-        <dl className="flex justify-between text-xs">
+        {/* All three, not just what is left. "Spent ₦30,000 of ₦32,000" is the
+            sentence people actually check; a remaining figure alone makes them
+            work out the other two. */}
+        <dl className="grid grid-cols-3 gap-2 border-t pt-3 text-center">
           <div>
-            <dt className="text-muted-foreground">Budget</dt>
-            <dd className="font-semibold tabular-nums">{money(totals.planned)}</dd>
+            <dt className="text-[11px] text-muted-foreground">Budgeted</dt>
+            <dd className="mt-0.5 text-sm font-semibold tabular-nums">{money(totals.planned)}</dd>
           </div>
-          <div className="text-right">
-            <dt className="text-muted-foreground">Spent</dt>
-            <dd className="font-semibold tabular-nums">{money(totals.committed)}</dd>
+          <div className="border-x">
+            <dt className="text-[11px] text-muted-foreground">Spent</dt>
+            <dd className="mt-0.5 text-sm font-semibold tabular-nums">{money(totals.spent)}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] text-muted-foreground">
+              {over ? "Over by" : "Left"}
+            </dt>
+            <dd
+              className={cn(
+                "mt-0.5 text-sm font-semibold tabular-nums",
+                over && "text-red-600 dark:text-red-400"
+              )}
+            >
+              {money(Math.abs(totals.remaining))}
+            </dd>
           </div>
         </dl>
+
+        {/* Money owed but not yet paid sits between spent and left, so it is
+            named rather than silently folded into one of them. */}
+        {totals.upcoming > 0 && (
+          <p className="text-center text-[11px] text-muted-foreground">
+            Includes {money(totals.upcoming)} not yet paid
+          </p>
+        )}
       </CardContent>
     </Card>
   )
@@ -243,6 +267,11 @@ function MiniLine({
             : money(line.committed)}
         </span>
       </div>
+      {budgeted && (
+        <div className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+          {money(line.committed)} of {money(line.planned)}
+        </div>
+      )}
       {budgeted && (
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
           <div
