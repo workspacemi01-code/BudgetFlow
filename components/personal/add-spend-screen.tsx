@@ -1,7 +1,9 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useActionState, useEffect, useRef, useState, useTransition } from "react"
+import { useEffect, useRef, useState, useTransition } from "react"
+
+import { usePersonalAction } from "@/hooks/use-personal"
 
 import { addEntry, addLine } from "@/app/actions/personal"
 import { FormMessage, SubmitButton } from "@/components/submit-button"
@@ -41,7 +43,7 @@ export function AddSpendScreen({
   presetLineId?: string
 }) {
   const router = useRouter()
-  const [state, action] = useActionState(addEntry, {})
+  const [state, action] = usePersonalAction(addEntry, {})
   const [lineId, setLineId] = useState(presetLineId ?? lines[0]?.id ?? "")
   const [addingCategory, setAddingCategory] = useState(false)
   const amountRef = useRef<HTMLInputElement>(null)

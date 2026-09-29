@@ -1,8 +1,10 @@
 "use client"
 
+import { useActionState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import type { PersonalBudget, PersonalEntry, PersonalProfile } from "@/lib/personal"
+import type { FormState } from "@/lib/types"
 import type { BudgetTotals, PersonalLine } from "@/lib/personal-math"
 
 export interface PersonalData {
@@ -41,11 +43,37 @@ export function usePersonal(budgetId?: string) {
 /**
  * Throw away what we know, after a write.
  *
- * Each server action already revalidates its own path; this is the client
- * cache's half of the same job. Without it, a spend you just recorded would not
- * appear until the cache went stale on its own.
+ * The server actions call revalidatePath, which clears Next's caches — but the
+ * screens read through React Query, which it cannot reach. Without this, a
+ * category you just added waits out staleTime before appearing.
  */
 export function useRefreshPersonal() {
   const client = useQueryClient()
   return () => client.invalidateQueries({ queryKey: ["personal"] })
+}
+
+/**
+ * useActionState, plus the cache refresh every write needs.
+ *
+ * revalidatePath on the server does not reach the React Query cache these
+ * screens read from, so a write that does not call this leaves the dashboard
+ * showing figures from before it. Wrapping the hook rather than remembering at
+ * ten call sites means a new form cannot forget.
+ */
+export function usePersonalAction(
+  action: (state: FormState, payload: FormData) => Promise<FormState>,
+  initial: FormState = {},
+) {
+  const [state, dispatch, pending] = useActionState(action, initial)
+  const refresh = useRefreshPersonal()
+  const handled = useRef(state)
+
+  useEffect(() => {
+    if (state === handled.current) return
+    handled.current = state
+    // Only a success changed anything worth re-reading.
+    if (state?.message) refresh()
+  }, [state, refresh])
+
+  return [state, dispatch, pending] as const
 }
