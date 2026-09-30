@@ -20,6 +20,7 @@ const MIGRATIONS = [
   '0004_personal_budgets.sql',
   '0005_unit_roles_enum.sql',
   '0006_unit_scoping.sql',
+  '0007_daily_spend.sql',
 ].map((f) => new URL(`../migrations/${f}`, import.meta.url))
 
 const SUPABASE_STUB = `
@@ -66,7 +67,7 @@ const svc = async (sql, params = []) => (await db.query(sql, params)).rows
 console.log('Applying migrations…')
 await db.exec(SUPABASE_STUB)
 for (const file of MIGRATIONS) await db.exec(readFileSync(file, 'utf8'))
-console.log('  ✓ 0001 → 0006 applied cleanly\n')
+console.log('  ✓ 0001 → 0007 applied cleanly\n')
 
 for (const u of Object.values(U))
   await svc(`insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)`,
@@ -226,6 +227,22 @@ try {
   creativeInsertWorked = true
 } catch (e) { console.log(`      (creative insert failed: ${e.message})`) }
 ok('RLS allows the officer writing a transaction against their own unit', creativeInsertWorked)
+
+// ---------------------------------------------------------------------------
+console.log('\nThe daily spend view the dashboard filters on')
+// ---------------------------------------------------------------------------
+
+const daily = await as(U.officer,
+  `select department_id, brand_id, day, spent, committed from public.v_daily_spend order by day`)
+ok('the view returns the officer\u2019s own approved spend', Array.isArray(daily))
+ok('and it carries a unit, so the dashboard can filter to one',
+   daily.every((r) => 'brand_id' in r), `(got keys: ${Object.keys(daily[0] ?? {}).join(',')})`)
+ok('and a day, so weeks and months can both be folded from it',
+   daily.every((r) => 'day' in r))
+
+/* The draft transaction written earlier is excluded by design — the view drops
+   draft, rejected and voided, so nothing unapproved reaches the chart. */
+ok('drafts are not counted as spend', daily.length === 0, `(got ${daily.length} rows)`)
 
 // ---------------------------------------------------------------------------
 console.log(`\n${passed} passed, ${failed} failed`)

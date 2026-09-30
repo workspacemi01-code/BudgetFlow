@@ -1,4 +1,4 @@
-export type Role = "owner" | "admin" | "finance" | "dept_manager" | "viewer"
+export type Role = "owner" | "admin" | "finance" | "dept_manager" | "line_manager" | "officer" | "viewer"
 
 export type TxnStatus = "draft" | "pending" | "approved" | "partially_paid" | "paid" | "rejected" | "voided"
 

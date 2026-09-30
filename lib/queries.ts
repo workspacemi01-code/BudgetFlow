@@ -65,14 +65,20 @@ function toLine(r: Row): LineTotal {
   }
 }
 
-export async function getLineTotals(ctx: OrgContext): Promise<LineTotal[]> {
+export async function getLineTotals(
+  ctx: OrgContext,
+  scope: { departmentId?: string | null; brandId?: string | null } = {},
+): Promise<LineTotal[]> {
   if (!ctx.period) return []
   const supabase = await createClient()
-  const result = await supabase
+  let query = supabase
     .from("v_budget_line_totals")
     .select("*")
     .eq("org_id", ctx.org.id)
     .eq("period_id", ctx.period.id)
+  if (scope.departmentId) query = query.eq("department_id", scope.departmentId)
+  if (scope.brandId) query = query.eq("brand_id", scope.brandId)
+  const result = await query
     .order("department_name")
     .order("brand_name", { nullsFirst: true })
     .order("category_name")
@@ -277,6 +283,74 @@ export async function getMonthlySummary(ctx: OrgContext): Promise<MonthTotal[]> 
     months.set(key, month)
   }
   return [...months.values()].sort((a, b) => a.key.localeCompare(b.key))
+}
+
+// ---------------------------------------------------------------------------
+// Spend over time, filtered
+// ---------------------------------------------------------------------------
+
+/** How finely the chart is cut. */
+export type Grain = "week" | "month" | "year"
+
+export interface SpendFilter {
+  grain: Grain
+  departmentId?: string | null
+  brandId?: string | null
+}
+
+/** Monday of the week a date falls in, as YYYY-MM-DD. */
+function weekStart(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  /* getUTCDay is 0 on Sunday, so Sunday belongs to the week that began six
+     days earlier rather than starting a new one. */
+  const back = (d.getUTCDay() + 6) % 7
+  d.setUTCDate(d.getUTCDate() - back)
+  return d.toISOString().slice(0, 10)
+}
+
+const weekLabel = new Intl.DateTimeFormat("en", { day: "numeric", month: "short", timeZone: "UTC" })
+
+function bucketOf(day: string, grain: Grain): { key: string; label: string } {
+  if (grain === "year") return { key: day.slice(0, 4), label: day.slice(0, 4) }
+  if (grain === "month") {
+    const key = day.slice(0, 7)
+    return { key, label: monthName.format(new Date(`${key}-01T00:00:00Z`)) }
+  }
+  const key = weekStart(day)
+  return { key, label: weekLabel.format(new Date(`${key}T00:00:00Z`)) }
+}
+
+/**
+ * Spend and commitment over time, cut to the requested grain and optionally
+ * narrowed to one department or one unit.
+ *
+ * The filtering is done in the query rather than after it, so a line manager
+ * looking at their own unit does not pull the whole department across the wire
+ * to discard most of it.
+ */
+export async function getSpendOverTime(ctx: OrgContext, filter: SpendFilter): Promise<MonthTotal[]> {
+  if (!ctx.period) return []
+  const supabase = await createClient()
+  let query = supabase
+    .from("v_daily_spend")
+    .select("day, transaction_count, spent, committed")
+    .eq("org_id", ctx.org.id)
+    .eq("period_id", ctx.period.id)
+
+  if (filter.departmentId) query = query.eq("department_id", filter.departmentId)
+  if (filter.brandId) query = query.eq("brand_id", filter.brandId)
+
+  const buckets = new Map<string, MonthTotal>()
+  for (const r of rows(await query)) {
+    const day = String(r.day).slice(0, 10)
+    const { key, label } = bucketOf(day, filter.grain)
+    const bucket = buckets.get(key) ?? { key, label, count: 0, approved: 0, spent: 0, committed: 0 }
+    bucket.count += num(r.transaction_count)
+    bucket.spent += num(r.spent)
+    bucket.committed += num(r.committed)
+    buckets.set(key, bucket)
+  }
+  return [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key))
 }
 
 export interface Totals {
