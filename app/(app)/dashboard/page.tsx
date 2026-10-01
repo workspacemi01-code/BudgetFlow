@@ -14,6 +14,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { formatDate, formatMoney, formatPercent } from "@/lib/format"
 import {
   getBrands,
+  getUnits,
   getDepartmentSummaries,
   getDepartments,
   getLineTotals,
@@ -49,15 +50,17 @@ export default async function DashboardPage({
   const rawGrain = one("grain")
   const grain: Grain = (GRAINS as string[]).includes(rawGrain) ? (rawGrain as Grain) : "month"
   const departmentId = one("department") || null
-  const brandId = one("unit") || null
+  const brandId = one("brand") || null
+  const unitId = one("unit") || null
 
-  const [departments, lines, months, recent, allDepartments, allUnits] = await Promise.all([
+  const [departments, lines, months, recent, allDepartments, allBrands, allUnits] = await Promise.all([
     getDepartmentSummaries(ctx),
-    getLineTotals(ctx, { departmentId, brandId }),
-    getSpendOverTime(ctx, { grain, departmentId, brandId }),
+    getLineTotals(ctx, { departmentId, brandId, unitId }),
+    getSpendOverTime(ctx, { grain, departmentId, brandId, unitId }),
     getTransactions(ctx, { limit: 5 }),
     getDepartments(ctx),
     getBrands(ctx),
+    getUnits(ctx),
   ])
 
   /* A departmental account — someone who only reaches one department — is
@@ -139,8 +142,9 @@ export default async function DashboardPage({
         <CardContent>
           <DashboardFilters
             departments={allDepartments.map((d) => ({ id: d.id, name: d.name }))}
-            units={allUnits.map((b) => ({ id: b.id, name: b.name, departmentId: b.departmentId }))}
-            unitLabel={ctx.org.brand_label || "Unit"}
+            brands={allBrands.map((b) => ({ id: b.id, name: b.name, parentId: b.departmentId }))}
+            units={allUnits.map((u) => ({ id: u.id, name: u.name, parentId: u.brandId }))}
+            brandLabel={ctx.org.brand_label || "Brand"}
             showDepartments={canFilterDepartments(ctx.role) && allDepartments.length > 1}
           />
         </CardContent>

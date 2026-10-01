@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CURRENCIES, formatDateTime, formatMoney } from "@/lib/format"
 import { MemberUnits, UnitSpendRules } from "@/components/unit-access"
-import { getAuditLog, getBrands, getDepartments, getMembers, type AuditEntry } from "@/lib/queries"
+import { getAuditLog, getBrands, getDepartments, getMembers, getUnits, type AuditEntry } from "@/lib/queries"
 import { ROLE_LABELS, invitableRoles, isAdmin, isApprover } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
 import { inviteUrl, siteOrigin } from "@/lib/site"
@@ -52,30 +52,39 @@ function describe(entry: AuditEntry, currency: string): { what: string; detail?:
 export default async function SettingsPage() {
   const ctx = await requireOrg()
   const admin = isAdmin(ctx.role)
-  const [members, departments, brands, audit, origin] = await Promise.all([
+  const [members, departments, brands, orgUnits, audit, origin] = await Promise.all([
     getMembers(ctx),
     getDepartments(ctx),
     getBrands(ctx),
+    getUnits(ctx),
     isApprover(ctx.role) ? getAuditLog(ctx) : Promise.resolve([]),
     siteOrigin(),
   ])
   const departmentName = new Map(departments.map((d) => [d.id, d.name]))
   const unitLabel = ctx.org.brand_label || "Unit"
 
-  const units = brands.map((b) => ({
-    id: b.id,
-    name: b.name,
-    departmentId: b.departmentId,
-    departmentName: departmentName.get(b.departmentId) ?? "",
-    officersCanSpend: b.officersCanSpend,
-  }))
+  /* A unit name alone ("Events") is not placeable, so each carries its path
+     down from the department. */
+  const brandById = new Map(brands.map((b) => [b.id, b]))
+  const units = orgUnits.map((u) => {
+    const brand = brandById.get(u.brandId)
+    const dept = brand ? (departmentName.get(brand.departmentId) ?? "") : ""
+    return {
+      id: u.id,
+      name: u.name,
+      brandId: u.brandId,
+      path: [dept, brand?.name].filter(Boolean).join(" › "),
+      /* A unit closed by its brand is closed, whatever its own flag says. */
+      officersCanSpend: u.officersCanSpend && (brand?.officersCanSpend ?? true),
+    }
+  })
 
   /* Only the roles whose reach is a unit. A department manager is already
      scoped by their departments, and listing them here would imply a unit
      narrows them, which it does not. */
   const unitMembers = members
     .filter((m) => m.role === "line_manager" || m.role === "officer")
-    .map((m) => ({ membershipId: m.membershipId, name: m.name, role: m.role, brandIds: m.brandIds }))
+    .map((m) => ({ membershipId: m.membershipId, name: m.name, role: m.role, unitIds: m.unitIds }))
 
   const details = [
     { label: "Organization", value: ctx.org.name },
@@ -189,7 +198,7 @@ export default async function SettingsPage() {
                 <InviteForm
                   roles={invitableRoles(ctx.role)}
                   departments={departments.map((d) => ({ id: d.id, name: d.name }))}
-                  units={units.map((u) => ({ id: u.id, name: u.name, departmentName: u.departmentName }))}
+                  units={units.map((u) => ({ id: u.id, name: u.name, path: u.path }))}
                   unitLabel={unitLabel}
                 />
               </div>

@@ -12,8 +12,9 @@ import { cn } from "@/lib/utils"
 export interface UnitOption {
   id: string
   name: string
-  departmentId: string
-  departmentName: string
+  brandId: string
+  /** "Marketing › Fearless Brand", so a bare unit name is placeable. */
+  path: string
   officersCanSpend: boolean
 }
 
@@ -21,7 +22,7 @@ export interface UnitMember {
   membershipId: string
   name: string
   role: Role
-  brandIds: string[]
+  unitIds: string[]
 }
 
 function Note({ state }: { state: FormState }) {
@@ -94,17 +95,17 @@ export function MemberUnits({
             >
               <input
                 type="checkbox"
-                name="brandIds"
+                name="unitIds"
                 value={u.id}
                 /* Keyed on the member so switching person resets the boxes to
                    that person's own units rather than keeping the last one's. */
-                defaultChecked={member?.brandIds.includes(u.id)}
+                defaultChecked={member?.unitIds.includes(u.id)}
                 key={`${selected}-${u.id}`}
                 className="mt-0.5"
               />
               <span className="min-w-0">
                 <span className="block font-medium">{u.name}</span>
-                <span className="block text-xs text-muted-foreground">{u.departmentName}</span>
+                <span className="block text-xs text-muted-foreground">{u.path}</span>
                 {!u.officersCanSpend && (
                   <span className="mt-1 block text-xs text-destructive">Closed to officers</span>
                 )}
@@ -151,7 +152,7 @@ export function UnitSpendRules({ units, unitLabel }: { units: UnitOption[]; unit
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">{u.name}</div>
               <div className="truncate text-xs text-muted-foreground">
-                {u.departmentName}
+                {u.path}
                 {" · "}
                 <span className={cn(!u.officersCanSpend && "text-destructive")}>
                   {u.officersCanSpend ? "Open to officers" : "Closed to officers"}
@@ -159,7 +160,7 @@ export function UnitSpendRules({ units, unitLabel }: { units: UnitOption[]; unit
               </div>
             </div>
             <form action={action}>
-              <input type="hidden" name="brandId" value={u.id} />
+              <input type="hidden" name="unitId" value={u.id} />
               <input type="hidden" name="allowed" value={u.officersCanSpend ? "false" : "true"} />
               <Button type="submit" variant="outline" size="sm" disabled={pending}>
                 {u.officersCanSpend ? "Close to officers" : "Open to officers"}
