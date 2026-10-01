@@ -120,26 +120,36 @@ export function DashboardFilters({
         </div>
       )}
 
-      {visibleUnits.length > 0 && (
-        <div className="space-y-1.5">
-          <Label htmlFor="filter-unit" className="text-xs text-muted-foreground">
-            {unitLabel}
-          </Label>
-          <select
-            id="filter-unit"
-            value={unit}
-            onChange={(e) => apply({ unit: e.target.value })}
-            className="h-9 rounded-md border bg-background px-3 text-sm"
-          >
-            <option value="">All {unitLabel.toLowerCase()}s</option>
-            {visibleUnits.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      {/* Shown even with nothing in it. Hiding the control made a department
+          with no units look like a dashboard missing a filter, rather than one
+          with nothing to filter by. */}
+      <div className="space-y-1.5">
+        <Label htmlFor="filter-unit" className="text-xs text-muted-foreground">
+          {unitLabel}
+        </Label>
+        <select
+          id="filter-unit"
+          value={unit}
+          disabled={visibleUnits.length === 0}
+          onChange={(e) => apply({ unit: e.target.value })}
+          className="h-9 rounded-md border bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {visibleUnits.length === 0 ? (
+            <option value="">
+              {department ? `No ${unitLabel.toLowerCase()}s in that department` : `No ${unitLabel.toLowerCase()}s yet`}
+            </option>
+          ) : (
+            <>
+              <option value="">All {unitLabel.toLowerCase()}s</option>
+              {visibleUnits.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </>
+          )}
+        </select>
+      </div>
 
       {(department || unit || grain !== "month") && (
         <button

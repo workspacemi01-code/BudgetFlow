@@ -6,7 +6,7 @@ import { redirect } from "next/navigation"
 
 import { CURRENCIES } from "@/lib/format"
 import { sendInviteEmail } from "@/lib/invites"
-import { ROLE_LABELS, invitableRoles, isAdmin } from "@/lib/roles"
+import { BRAND_THEMES, ROLE_LABELS, invitableRoles, isAdmin } from "@/lib/roles"
 import { ORG_COOKIE, getMemberships, requireOrg, requireUser } from "@/lib/session"
 import { inviteUrl, safePath, siteOrigin } from "@/lib/site"
 import { createClient } from "@/lib/supabase/server"
@@ -64,8 +64,14 @@ export async function updateOrganization(_: FormState, formData: FormData): Prom
 
   const name = String(formData.get("name") ?? "").trim()
   const currency = String(formData.get("currency") ?? "")
+  const brandTheme = String(formData.get("brandTheme") ?? "default")
   if (name.length < 2) return { error: "Enter the organization's name." }
   if (!CURRENCIES.some((c) => c.code === currency)) return { error: "Pick a currency." }
+  /* Named palettes, not a free colour. A hex field would let someone pick
+     something white text cannot sit on, or a red indistinguishable from the
+     one reserved for over-budget warnings. Each named palette is tuned once,
+     including its warning colour. */
+  if (!BRAND_THEMES.some((t) => t.value === brandTheme)) return { error: "Pick a palette." }
 
   // brand_label is no longer written. The field that set it is gone, so reading
   // it back would send an empty string — and the validation that used to guard
@@ -74,7 +80,12 @@ export async function updateOrganization(_: FormState, formData: FormData): Prom
   const supabase = await createClient()
   const { error } = await supabase
     .from("organizations")
-    .update({ name, currency, allow_over_budget: formData.get("allowOverBudget") === "on" })
+    .update({
+      name,
+      currency,
+      brand_theme: brandTheme,
+      allow_over_budget: formData.get("allowOverBudget") === "on",
+    })
     .eq("id", ctx.org.id)
   if (error) return { error: error.message }
   revalidatePath("/", "layout")

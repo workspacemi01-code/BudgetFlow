@@ -101,6 +101,7 @@ export default async function SettingsPage() {
                   name: ctx.org.name,
                   currency: ctx.org.currency,
                   allowOverBudget: ctx.org.allow_over_budget,
+                  brandTheme: ctx.org.brand_theme,
                 }}
               />
             ) : (
