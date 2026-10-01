@@ -6,6 +6,7 @@ const MIGRATIONS = [
   new URL('../migrations/0002_service_role_grants.sql', import.meta.url),
   new URL('../migrations/0003_invitations.sql', import.meta.url),
   new URL('../migrations/0004_personal_budgets.sql', import.meta.url),
+  new URL('../migrations/0013_personal_month_rollover.sql', import.meta.url),
 ]
 
 const SUPABASE_STUB = `
@@ -182,6 +183,52 @@ const org = await one(U.ada, `select * from public.create_organization('Acme Ltd
 ok('organizations still work exactly as before', !!org?.id)
 const stillThere = await one(U.ada, `select count(*)::int as n from public.brands`)
 ok('and the brands table is still there, as asked', Number(stillThere.n) === 0)
+
+// ---------------------------------------------------------------------------
+console.log('\nA new month keeps the categories you built')
+// ---------------------------------------------------------------------------
+
+/* The categories are the part of a budget that takes effort to get right, and
+   they were the part that did not survive the month. */
+
+/* Self-contained: this section builds its own months rather than leaning on
+   budgets earlier tests create and delete. */
+const may = await one(U.ada,
+  `select public.start_personal_budget('monthly', date '2027-05-04', 'NGN', array['School fees','Fuel']) as id`)
+await as(U.ada, `update public.personal_lines set planned = 75000
+                 where budget_id = $1 and name = 'School fees'`, [may.id])
+
+const jun = await one(U.ada, `select public.start_personal_budget('monthly', date '2027-06-09') as id`)
+const junLines = await as(U.ada,
+  `select name, planned from public.personal_lines where budget_id = $1 order by position`, [jun.id])
+
+ok('June is its own budget, not May continued', jun.id !== may.id)
+ok('and it carries the categories May actually had',
+   junLines.some((l) => l.name === 'School fees') && junLines.some((l) => l.name === 'Fuel'),
+   `(got ${junLines.map((l) => l.name).join(', ')})`)
+ok('not the four starter names someone already replaced',
+   !junLines.some((l) => l.name === 'Transport'),
+   `(got ${junLines.map((l) => l.name).join(', ')})`)
+
+const schoolJun = junLines.find((l) => l.name === 'School fees')
+ok('with the amount against it — rent does not change because the page turned',
+   money(schoolJun?.planned) === 75000, `(carried ${schoolJun?.planned})`)
+
+/* Spending must NOT carry: separate months is the whole point. */
+const junSpent = await one(U.ada,
+  `select coalesce(sum(e.amount), 0) as spent
+   from public.personal_entries e
+   join public.personal_lines l on l.id = e.line_id
+   where l.budget_id = $1`, [jun.id])
+ok('but spending does not — June starts at zero', money(junSpent.spent) === 0)
+
+const custom = await one(U.ada,
+  `select public.start_personal_budget('monthly', date '2027-09-02', 'NGN', array['Tithe','Data']) as id`)
+const customLines = await as(U.ada,
+  `select name from public.personal_lines where budget_id = $1 order by position`, [custom.id])
+ok('an explicit list of categories still wins over the carry-forward',
+   customLines.map((l) => l.name).join(',') === 'Tithe,Data',
+   `(got ${customLines.map((l) => l.name).join(',')})`)
 
 console.log(`\n${passed} passed, ${failed} failed`)
 await db.close()
