@@ -10,7 +10,7 @@ import { FormMessage, SubmitButton } from "@/components/submit-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CURRENCIES } from "@/lib/format"
-import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/roles"
+import { BRAND_THEMES, ROLE_DESCRIPTIONS, ROLE_LABELS } from "@/lib/roles"
 import type { FormState, Role } from "@/lib/types"
 
 const initial: FormState = {}
@@ -18,7 +18,7 @@ const initial: FormState = {}
 export function OrgSettingsForm({
   org,
 }: {
-  org: { name: string; currency: string; allowOverBudget: boolean }
+  org: { name: string; currency: string; allowOverBudget: boolean; brandTheme?: string }
 }) {
   const [state, action] = useActionState(updateOrganization, initial)
   return (
@@ -34,6 +34,35 @@ export function OrgSettingsForm({
             </option>
           ))}
         </select>
+      </Field>
+      <Field label="Brand palette" htmlFor="org-theme">
+        <select
+          id="org-theme"
+          name="brandTheme"
+          defaultValue={org.brandTheme ?? "default"}
+          className={controlClass}
+        >
+          {BRAND_THEMES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Applies to this organization only. Everyone else keeps their own.
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          {BRAND_THEMES.map((t) => (
+            <span key={t.value} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span
+                aria-hidden
+                className="size-3.5 rounded-full ring-1 ring-foreground/15"
+                style={{ background: t.swatch }}
+              />
+              {t.label}
+            </span>
+          ))}
+        </div>
       </Field>
       <label className="flex items-start gap-3 text-sm">
         <input

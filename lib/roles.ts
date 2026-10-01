@@ -50,3 +50,17 @@ export const isUnitScoped = (role: Role) => role === "line_manager" || role === 
 
 /** Who may filter across the whole organisation, department by department. */
 export const canFilterDepartments = (role: Role) => isApprover(role)
+
+
+/**
+ * Palettes an organisation can choose between.
+ *
+ * Named rather than a free colour picker, because each one is tuned as a set —
+ * including a warning colour that stays distinct from the brand colour. A red
+ * brand with a red warning means an overspent line looks like every button on
+ * the page, which is what made the first attempt at this unusable.
+ */
+export const BRAND_THEMES = [
+  { value: "default", label: "Teal (default)", swatch: "#2a7f7f" },
+  { value: "crimson", label: "Red & navy", swatch: "#ff0a11" },
+] as const
