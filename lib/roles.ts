@@ -35,6 +35,17 @@ export const isAdmin = (role: Role) => role === "owner" || role === "admin"
 /** Owners, admins and finance approve spend, set budgets and record payments. */
 export const isApprover = (role: Role) => isAdmin(role) || role === "finance"
 
+/**
+ * Who sees the approvals queue.
+ *
+ * Wider than isApprover, because a department manager gives final approval for
+ * their own department — the brief's words. Which department is theirs is not a
+ * question this can answer, and it does not need to: the database scopes it
+ * (can_approve_line in 0011), and the queue only ever contains rows RLS let
+ * through. This decides whether the screen is worth showing at all.
+ */
+export const canApproveSpend = (role: Role) => isApprover(role) || role === "dept_manager"
+
 export const canRaiseSpend = (role: Role) => role !== "viewer"
 
 /**

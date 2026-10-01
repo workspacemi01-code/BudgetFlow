@@ -17,6 +17,7 @@ const MIGRATIONS = [
   '0004_personal_budgets.sql', '0005_unit_roles_enum.sql', '0006_unit_scoping.sql',
   '0007_daily_spend.sql', '0008_org_brand_theme.sql', '0009_unit_table_grants.sql',
   '0010_units.sql',
+  '0011_department_approval.sql',
 ].map((f) => new URL(`../migrations/${f}`, import.meta.url))
 
 const SUPABASE_STUB = `
@@ -63,7 +64,7 @@ const svc = async (sql, params = []) => (await db.query(sql, params)).rows
 console.log('Applying migrations…')
 await db.exec(SUPABASE_STUB)
 for (const f of MIGRATIONS) await db.exec(readFileSync(f, 'utf8'))
-console.log('  ✓ 0001 → 0010 applied cleanly\n')
+console.log('  ✓ 0001 → 0011 applied cleanly\n')
 
 for (const u of Object.values(U))
   await svc(`insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)`,
@@ -233,6 +234,63 @@ try {
     [mem.deptmgr.id, unit.creative.id, org.id])
 } catch (e) { unitsWritable = false; console.log(`      (${e.message})`) }
 ok('an admin can attach someone to a unit from the app', unitsWritable)
+
+// ---------------------------------------------------------------------------
+console.log('\nThe approval chain the brief describes')
+// ---------------------------------------------------------------------------
+
+/* "Unit/Line Managers can send approvals to Department managers."
+   "Department Managers give final approval of all spending in a department." */
+
+const [raised] = await as(U.eventsOfficer,
+  `insert into public.transactions (org_id, budget_line_id, txn_code, txn_type, status, approved_amount, description, created_by)
+   values ($1,$2,'TXN-APP','expense','pending',5000,'venue deposit',$3) returning id, status`,
+  [org.id, eventsLine.id, U.eventsOfficer.id])
+ok('an officer can send spend up for approval', raised?.status === 'pending')
+
+let officerApproved = false
+try {
+  await as(U.eventsOfficer, `update public.transactions set status = 'approved' where id = $1`, [raised.id])
+  officerApproved = true
+} catch { /* expected */ }
+ok('an officer cannot approve their own request', officerApproved === false)
+
+let leadApproved = false
+try {
+  await as(U.eventsLead, `update public.transactions set status = 'approved' where id = $1`, [raised.id])
+  leadApproved = true
+} catch { /* expected */ }
+ok('a unit manager cannot approve either — they send it up', leadApproved === false)
+
+let deptApproved = false
+try {
+  await as(U.deptmgr, `update public.transactions set status = 'approved' where id = $1`, [raised.id])
+  deptApproved = true
+} catch (e) { console.log(`      (${e.message})`) }
+ok('the DEPARTMENT MANAGER gives final approval', deptApproved)
+
+const [after] = await svc(`select status, approved_by from public.transactions where id = $1`, [raised.id])
+ok('and is recorded as the approver', after.status === 'approved' && after.approved_by === U.deptmgr.id)
+
+/* A department manager's authority stops at their own department. */
+const [dept2] = await svc(
+  `insert into public.departments (org_id, name, code) values ($1,'Sales','SLS') returning *`, [org.id])
+const [otherLine] = await svc(
+  `insert into public.budget_lines (org_id, period_id, department_id, category_id, annual_budget)
+   values ($1,$2,$3,$4, 1000000) returning *`, [org.id, period.id, dept2.id, cat.id])
+const [otherTxn] = await svc(
+  `insert into public.transactions (org_id, budget_line_id, txn_code, txn_type, status, approved_amount, description, created_by)
+   values ($1,$2,'TXN-OTHER','expense','pending',1000,'sales spend',$3) returning id`,
+  [org.id, otherLine.id, U.owner.id])
+
+/* An UPDATE that RLS filters out affects no rows and raises nothing, so the
+   question is what the transaction says afterwards, not whether it threw. */
+try {
+  await as(U.deptmgr, `update public.transactions set status = 'approved' where id = $1`, [otherTxn.id])
+} catch { /* either way, check the row */ }
+const [otherAfter] = await svc(`select status from public.transactions where id = $1`, [otherTxn.id])
+ok('a department manager CANNOT approve another department\u2019s spend',
+   otherAfter.status === 'pending', `(status is now ${otherAfter.status})`)
 
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

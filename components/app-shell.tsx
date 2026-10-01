@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { ROLE_LABELS, canRaiseSpend, isApprover } from "@/lib/roles"
+import { ROLE_LABELS, canApproveSpend, canRaiseSpend } from "@/lib/roles"
 import type { Role } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -250,7 +250,7 @@ export function AppShell({
   // the same busy overlay the sidebar switcher uses — otherwise a phone tap
   // looks like nothing happened for the second it takes.
   const [switching, startSwitch] = useTransition()
-  const approver = isApprover(org.role)
+  const approver = canApproveSpend(org.role)
   const nav = NAV.filter((item) => !item.approverOnly || approver)
 
   return (

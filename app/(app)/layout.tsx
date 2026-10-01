@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/app-shell"
 import { BrandTheme } from "@/components/brand-theme"
 import { getPendingCount } from "@/lib/queries"
-import { isApprover } from "@/lib/roles"
+import { canApproveSpend } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
 
 const DAY = 86_400_000
@@ -12,7 +12,7 @@ function daysUntil(iso: string) {
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireOrg()
-  const pendingCount = isApprover(ctx.role) ? await getPendingCount(ctx) : 0
+  const pendingCount = canApproveSpend(ctx.role) ? await getPendingCount(ctx) : 0
   const trialDaysLeft = ctx.org.plan === "trial" && ctx.org.trial_ends_at ? daysUntil(ctx.org.trial_ends_at) : null
 
   return (
