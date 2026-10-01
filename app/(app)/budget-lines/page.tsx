@@ -5,7 +5,7 @@ import { AddLineDialog } from "@/components/budget-dialogs"
 import { PageHeader } from "@/components/page-header"
 import { SpendLegend, UtilBar } from "@/components/util-bar"
 import { formatMoney } from "@/lib/format"
-import { getBrands, getCategories, getDepartmentSummaries, getLineTotals, getUnits, type LineTotal } from "@/lib/queries"
+import { getCategories, getDepartmentSummaries, getLineTotals, getUnits, type LineTotal } from "@/lib/queries"
 import { canManageLines, isApprover } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
 import { cn } from "@/lib/utils"
@@ -32,11 +32,10 @@ export default async function BudgetLinesPage() {
   // No getBrands: the add-line form no longer asks for one, so fetching them
   // was a query for a field that does not exist any more. Lines that already
   // carry a brand still show it — that comes through v_budget_line_totals.
-  const [lines, departments, categories, brands, units] = await Promise.all([
+  const [lines, departments, categories, units] = await Promise.all([
     getLineTotals(ctx),
     getDepartmentSummaries(ctx),
     getCategories(ctx),
-    getBrands(ctx),
     getUnits(ctx),
   ])
   const editable = departments.filter((d) => !ctx.departmentIds || ctx.departmentIds.includes(d.id))
@@ -51,9 +50,7 @@ export default async function BudgetLinesPage() {
             <AddLineDialog
               currency={currency}
               departments={editable.map((d) => ({ id: d.id, name: d.name }))}
-              brands={brands.map((b) => ({ id: b.id, name: b.name, departmentId: b.departmentId }))}
-              units={units.map((u) => ({ id: u.id, name: u.name, brandId: u.brandId }))}
-              brandLabel={ctx.org.brand_label || "Brand"}
+              units={units.map((u) => ({ id: u.id, name: u.name, departmentId: u.departmentId }))}
               categories={categories.map((c) => c.name)}
               canAddCategory={isApprover(ctx.role)}
             />

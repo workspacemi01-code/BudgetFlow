@@ -65,11 +65,8 @@ export function AddDepartmentDialog({ currency }: { currency: string }) {
 interface LineDialogProps {
   currency: string
   departments: { id: string; name: string }[]
-  /** Brands with the department they belong to, so the list can narrow. */
-  brands: { id: string; name: string; departmentId: string }[]
-  /** Units with their brand, likewise. */
-  units: { id: string; name: string; brandId: string }[]
-  brandLabel: string
+  /** Units with the department they belong to, so the list can narrow. */
+  units: { id: string; name: string; departmentId: string }[]
   categories: string[]
   canAddCategory: boolean
 }
@@ -77,22 +74,14 @@ interface LineDialogProps {
 function AddLineForm({
   currency,
   departments,
-  brands,
   units,
-  brandLabel,
   categories,
   canAddCategory,
   onDone,
 }: LineDialogProps & { onDone: () => void }) {
   const [state, action] = useDialogAction(addBudgetLine, onDone)
   const [departmentId, setDepartmentId] = useState(departments.length === 1 ? departments[0].id : "")
-  /* Typed, not selected: the same control offers what exists and accepts
-     something new, so setting up Fearless or Sosa is just typing it once. */
-  const [brand, setBrand] = useState("")
-
-  const brandsHere = brands.filter((b) => b.departmentId === departmentId)
-  const chosenBrand = brandsHere.find((b) => b.name.toLowerCase() === brand.trim().toLowerCase())
-  const unitsHere = chosenBrand ? units.filter((u) => u.brandId === chosenBrand.id) : []
+  const unitsHere = units.filter((u) => u.departmentId === departmentId)
 
   return (
     <form action={action} className="grid gap-4">
@@ -113,49 +102,23 @@ function AddLineForm({
           ))}
         </select>
       </Field>
-      {/* Department › Brand › Unit, in that order, because that is the order
-          the business thinks in. Both are optional: a cost the department
-          carries as a whole needs neither, and a cost one unit carries needs
-          both. */}
-      <Field
-        label={brandLabel}
-        htmlFor="line-brand"
-        hint={departmentId ? "Optional. Leave empty for a department-wide line." : "Choose a department first."}
-      >
-        <Input
-          id="line-brand"
-          name="brand"
-          list="line-brands"
-          value={brand}
-          onChange={(e) => setBrand(e.target.value)}
-          disabled={!departmentId}
-          className="h-11"
-          autoComplete="off"
-          placeholder="e.g. Fearless Brand"
-        />
-        <datalist id="line-brands">
-          {brandsHere.map((b) => (
-            <option key={b.id} value={b.name} />
-          ))}
-        </datalist>
-      </Field>
+      {/* Department › Unit › Category, the order the business uses. The unit is
+          typed against what exists, so creating Events or Sosa Brand is typing
+          it once. Optional: a cost the department carries as a whole has no
+          unit. */}
       <Field
         label="Unit"
         htmlFor="line-unit"
-        hint={
-          chosenBrand
-            ? "Optional. A line here belongs to this unit alone."
-            : `Choose a ${brandLabel.toLowerCase()} first.`
-        }
+        hint={departmentId ? "Optional. Leave empty for a department-wide line." : "Choose a department first."}
       >
         <Input
           id="line-unit"
           name="unit"
           list="line-units"
-          disabled={!brand.trim()}
+          disabled={!departmentId}
           className="h-11"
           autoComplete="off"
-          placeholder="e.g. Events"
+          placeholder="e.g. Events, Sosa Brand"
         />
         <datalist id="line-units">
           {unitsHere.map((u) => (

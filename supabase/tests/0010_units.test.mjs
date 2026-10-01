@@ -18,6 +18,7 @@ const MIGRATIONS = [
   '0007_daily_spend.sql', '0008_org_brand_theme.sql', '0009_unit_table_grants.sql',
   '0010_units.sql',
   '0011_department_approval.sql',
+  '0012_units_under_departments.sql',
 ].map((f) => new URL(`../migrations/${f}`, import.meta.url))
 
 const SUPABASE_STUB = `
@@ -64,7 +65,7 @@ const svc = async (sql, params = []) => (await db.query(sql, params)).rows
 console.log('Applying migrations…')
 await db.exec(SUPABASE_STUB)
 for (const f of MIGRATIONS) await db.exec(readFileSync(f, 'utf8'))
-console.log('  ✓ 0001 → 0011 applied cleanly\n')
+console.log('  ✓ 0001 → 0012 applied cleanly\n')
 
 for (const u of Object.values(U))
   await svc(`insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)`,
@@ -88,19 +89,24 @@ const [sosa] = await svc(
   `insert into public.brands (org_id, department_id, name, officers_can_spend)
    values ($1, $2, 'Sosa Brand', false) returning *`, [org.id, dept.id])
 
+/* Six units in Marketing, as the brief lists them. Sosa Brand is a unit whose
+   name happens to contain "Brand", and it is the one closed to officers. */
 const unit = {}
-for (const [key, brand, name] of [
-  ['events',   fearless, 'Events'],
-  ['creative', fearless, 'Creative Unit'],
-  ['sosaOps',  sosa,     'Sosa Operations'],
+for (const [key, name, open] of [
+  ['events',   'Events', true],
+  ['creative', 'Creative Unit', true],
+  ['sosa',     'Sosa Brand', false],
+  ['bigi',     'Bigi Brand', true],
 ]) {
   const [u] = await svc(
-    `insert into public.units (org_id, brand_id, name) values ($1, $2, $3) returning *`,
-    [org.id, brand.id, name])
+    `insert into public.units (org_id, department_id, name, officers_can_spend)
+     values ($1, $2, $3, $4) returning *`,
+    [org.id, dept.id, name, open])
   unit[key] = u
 }
-ok('units sit under brands, which sit under departments',
-   unit.events.brand_id === fearless.id && fearless.department_id === dept.id)
+ok('units sit directly under the department', unit.events.department_id === dept.id)
+ok('a unit needs no brand', unit.events.brand_id === null)
+ok('Sosa is the unit closed to officers', unit.sosa.officers_can_spend === false)
 
 const mem = {}
 for (const [key, role] of [
@@ -117,7 +123,7 @@ await svc(`insert into public.membership_departments (membership_id, department_
 for (const [m, u] of [
   [mem.eventsLead, unit.events],
   [mem.eventsOfficer, unit.events],
-  [mem.sosaOfficer, unit.sosaOps],
+  [mem.sosaOfficer, unit.sosa],
 ]) {
   await svc(`insert into public.membership_units (membership_id, unit_id, org_id) values ($1,$2,$3)`,
     [m.id, u.id, org.id])
@@ -132,18 +138,18 @@ console.log('\nSeeing — everyone in the department may look')
 
 ok('the Events officer sees their own unit',   await chk(U.eventsOfficer, 'can_view_unit', unit.events) === true)
 ok('and sees Creative, which is not theirs',   await chk(U.eventsOfficer, 'can_view_unit', unit.creative) === true)
-ok('and sees a unit under Sosa',               await chk(U.eventsOfficer, 'can_view_unit', unit.sosaOps) === true)
+ok('and sees Sosa, which is closed to them',               await chk(U.eventsOfficer, 'can_view_unit', unit.sosa) === true)
 
 // ---------------------------------------------------------------------------
 console.log('\nEditing — a unit manager holds one unit, not the brand')
 // ---------------------------------------------------------------------------
 
 ok('the Events lead edits Events',             await chk(U.eventsLead, 'can_edit_unit', unit.events) === true)
-ok('the Events lead CANNOT edit Creative, its sibling under the same brand',
+ok('the Events lead CANNOT edit Creative, another unit in the department',
    await chk(U.eventsLead, 'can_edit_unit', unit.creative) === false)
 ok('the department manager edits every unit in the department',
    await chk(U.deptmgr, 'can_edit_unit', unit.creative) === true &&
-   await chk(U.deptmgr, 'can_edit_unit', unit.sosaOps) === true)
+   await chk(U.deptmgr, 'can_edit_unit', unit.sosa) === true)
 ok('an officer edits nothing',                 await chk(U.eventsOfficer, 'can_edit_unit', unit.events) === false)
 
 // ---------------------------------------------------------------------------
@@ -153,13 +159,13 @@ console.log('\nSpending — per unit, and closed where it is closed')
 ok('the Events officer spends in Events',      await chk(U.eventsOfficer, 'can_spend_unit', unit.events) === true)
 ok('the Events officer CANNOT spend in Creative, its sibling',
    await chk(U.eventsOfficer, 'can_spend_unit', unit.creative) === false)
-ok('the Sosa officer CANNOT spend in their own unit, because the brand is closed',
-   await chk(U.sosaOfficer, 'can_spend_unit', unit.sosaOps) === false)
-ok('but still sees it',                        await chk(U.sosaOfficer, 'can_view_unit', unit.sosaOps) === true)
-ok('closing a brand does not close a different brand',
+ok('the Sosa officer CANNOT spend in Sosa — the rule the brief names',
+   await chk(U.sosaOfficer, 'can_spend_unit', unit.sosa) === false)
+ok('but still sees it',                        await chk(U.sosaOfficer, 'can_view_unit', unit.sosa) === true)
+ok('closing one unit does not close another',
    await chk(U.eventsOfficer, 'can_spend_unit', unit.events) === true)
-ok('the department manager still spends under the closed brand',
-   await chk(U.deptmgr, 'can_spend_unit', unit.sosaOps) === true)
+ok('the department manager still spends in Sosa',
+   await chk(U.deptmgr, 'can_spend_unit', unit.sosa) === true)
 
 // Closing one unit must not touch its siblings.
 await svc(`update public.units set officers_can_spend = false where id = $1`, [unit.events.id])
@@ -179,15 +185,15 @@ const [cat] = await svc(
   `insert into public.categories (org_id, name) values ($1, 'Advertising') returning *`, [org.id])
 
 const [eventsLine] = await svc(
-  `insert into public.budget_lines (org_id, period_id, department_id, brand_id, unit_id, category_id, annual_budget)
-   values ($1,$2,$3,$4,$5,$6, 4000000) returning *`,
-  [org.id, period.id, dept.id, fearless.id, unit.events.id, cat.id])
+  `insert into public.budget_lines (org_id, period_id, department_id, unit_id, category_id, annual_budget)
+   values ($1,$2,$3,$4,$5, 4000000) returning *`,
+  [org.id, period.id, dept.id, unit.events.id, cat.id])
 const [creativeLine] = await svc(
-  `insert into public.budget_lines (org_id, period_id, department_id, brand_id, unit_id, category_id, annual_budget)
-   values ($1,$2,$3,$4,$5,$6, 2000000) returning *`,
-  [org.id, period.id, dept.id, fearless.id, unit.creative.id, cat.id])
+  `insert into public.budget_lines (org_id, period_id, department_id, unit_id, category_id, annual_budget)
+   values ($1,$2,$3,$4,$5, 2000000) returning *`,
+  [org.id, period.id, dept.id, unit.creative.id, cat.id])
 
-ok('two units under one brand can hold the same category without colliding',
+ok('two units can hold the same category without colliding',
    eventsLine.id !== creativeLine.id)
 
 const lineChk = async (user, fn, line) =>
@@ -211,7 +217,7 @@ try {
      values ($1,$2,'TXN-X','expense','draft',1000,'not allowed',$3)`,
     [org.id, creativeLine.id, U.eventsOfficer.id])
 } catch { blocked = true }
-ok('RLS blocks an officer writing against a sibling unit', blocked)
+ok('RLS blocks an officer writing against another unit', blocked)
 
 let allowed = false
 try {

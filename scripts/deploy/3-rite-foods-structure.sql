@@ -1,27 +1,24 @@
 -- ============================================================================
---  Rite Foods: Marketing, its brands, and their units.
+--  Rite Foods: Marketing and its units.
 --
---  From the brief: Marketing holds Creative Unit, Events, Fearless Brand, Sosa
---  Brand, Bigi Brand and Bakery Brand. Four of those are brands; Creative Unit
---  and Events are units, and the brief does not say which brand they sit under,
---  so they are created under every brand. Delete the ones that do not apply —
---  a unit with no budget line against it costs nothing.
+--  Straight from the brief: "within Marketing, there are various units like
+--  Creative Unit, Events, and Fearless Brand, Sosa Brand, Bigi Brand and
+--  Bakery Brand." Six units in one department — "Brand" is part of four of
+--  those names, not a level above them.
 --
---  Sosa is closed to officers, which is the rule as the business stated it.
+--  Sosa Brand is created closed to unit officers, which is the rule as the
+--  business stated it: "they can't spend within Sosa Budget."
 --
---  Safe to re-run: every insert skips what is already there by name.
---  Change nothing else — it only adds.
+--  Safe to re-run: it skips anything already there by name, and only adds.
 -- ============================================================================
 
 do $$
 declare
-  v_org   uuid;
-  v_dept  uuid;
-  v_brand uuid;
-  b       text;
-  u       text;
+  v_org  uuid;
+  v_dept uuid;
+  u      text;
 begin
-  -- The organisation to set up. Edit this if the name differs.
+  -- Edit this if the organisation is named differently.
   select id into v_org from public.organizations
   where name ilike 'Rite Foods%' order by created_at limit 1;
 
@@ -29,7 +26,6 @@ begin
     raise exception 'No organisation whose name starts with "Rite Foods". Edit the name in this script.';
   end if;
 
-  -- Marketing
   select id into v_dept from public.departments
   where org_id = v_org and name ilike 'Marketing' limit 1;
 
@@ -38,25 +34,14 @@ begin
     values (v_org, 'Marketing', 'MKT') returning id into v_dept;
   end if;
 
-  -- The four brands. Sosa is the one closed to officers.
-  foreach b in array array['Fearless Brand', 'Sosa Brand', 'Bigi Brand', 'Bakery Brand']
+  foreach u in array array[
+    'Creative Unit', 'Events', 'Fearless Brand', 'Sosa Brand', 'Bigi Brand', 'Bakery Brand'
+  ]
   loop
-    select id into v_brand from public.brands
-    where department_id = v_dept and name = b limit 1;
-
-    if v_brand is null then
-      insert into public.brands (org_id, department_id, name, officers_can_spend)
-      values (v_org, v_dept, b, b <> 'Sosa Brand')
-      returning id into v_brand;
+    if not exists (select 1 from public.units where department_id = v_dept and name = u) then
+      insert into public.units (org_id, department_id, name, officers_can_spend)
+      values (v_org, v_dept, u, u <> 'Sosa Brand');
     end if;
-
-    -- The units named in the brief, under each brand.
-    foreach u in array array['Creative Unit', 'Events']
-    loop
-      if not exists (select 1 from public.units where brand_id = v_brand and name = u) then
-        insert into public.units (org_id, brand_id, name) values (v_org, v_brand, u);
-      end if;
-    end loop;
   end loop;
 end $$;
 
@@ -64,12 +49,11 @@ end $$;
 --  What now exists.
 -- ============================================================================
 
-select d.name  as department,
-       b.name  as brand,
-       u.name  as unit,
-       case when b.officers_can_spend then 'open' else 'CLOSED to officers' end as brand_rule
+select d.name as department,
+       u.name as unit,
+       case when u.officers_can_spend then 'open'
+            else 'CLOSED to unit officers' end as officer_rule
 from   public.departments d
-join   public.brands b on b.department_id = d.id
-left   join public.units u on u.brand_id = b.id
+join   public.units u on u.department_id = d.id
 where  d.name ilike 'Marketing'
-order  by b.name, u.name;
+order  by u.name;

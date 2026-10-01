@@ -34,16 +34,11 @@ const GRAINS = [
  */
 export function DashboardFilters({
   departments,
-  brands,
   units,
-  brandLabel,
   showDepartments,
 }: {
   departments: FilterOption[]
-  brands: FilterOption[]
   units: FilterOption[]
-  /** Orgs name the middle level themselves: Brand, Project, Cost Center. */
-  brandLabel: string
   showDepartments: boolean
 }) {
   const router = useRouter()
@@ -52,7 +47,6 @@ export function DashboardFilters({
 
   const grain = params.get("grain") ?? "month"
   const department = params.get("department") ?? ""
-  const brand = params.get("brand") ?? ""
   const unit = params.get("unit") ?? ""
 
   const apply = useCallback(
@@ -67,20 +61,11 @@ export function DashboardFilters({
     [params, router],
   )
 
-  /* Each level belongs to exactly one above it, so changing a parent would
-     leave a child filtering to nothing. Clear what is below instead. */
-  const onDepartment = (value: string) => apply({ department: value, brand: "", unit: "" })
-  const onBrand = (value: string) => apply({ brand: value, unit: "" })
+  /* A unit belongs to one department, so a unit chosen under a department that
+     is then changed would filter to nothing. Clear it instead. */
+  const onDepartment = (value: string) => apply({ department: value, unit: "" })
 
-  const visibleBrands = department ? brands.filter((b) => b.parentId === department) : brands
-  /* With a brand chosen, its units. With only a department chosen, the units of
-     every brand in it — so the list still narrows one step at a time. */
-  const brandIds = new Set(visibleBrands.map((b) => b.id))
-  const visibleUnits = brand
-    ? units.filter((u) => u.parentId === brand)
-    : department
-      ? units.filter((u) => u.parentId && brandIds.has(u.parentId))
-      : units
+  const visibleUnits = department ? units.filter((u) => u.parentId === department) : units
 
   return (
     <div
@@ -132,34 +117,6 @@ export function DashboardFilters({
         </div>
       )}
 
-      <div className="space-y-1.5">
-        <Label htmlFor="filter-brand" className="text-xs text-muted-foreground">
-          {brandLabel}
-        </Label>
-        <select
-          id="filter-brand"
-          value={brand}
-          disabled={visibleBrands.length === 0}
-          onChange={(e) => onBrand(e.target.value)}
-          className="h-9 rounded-md border bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {visibleBrands.length === 0 ? (
-            <option value="">
-              {department ? `No ${brandLabel.toLowerCase()}s here` : `No ${brandLabel.toLowerCase()}s yet`}
-            </option>
-          ) : (
-            <>
-              <option value="">All {brandLabel.toLowerCase()}s</option>
-              {visibleBrands.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </>
-          )}
-        </select>
-      </div>
-
       {/* Shown even with nothing in it. Hiding the control made a brand with no
           units look like a dashboard missing a filter, rather than one with
           nothing to filter by. */}
@@ -175,7 +132,7 @@ export function DashboardFilters({
           className="h-9 rounded-md border bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
         >
           {visibleUnits.length === 0 ? (
-            <option value="">{brand || department ? "No units here" : "No units yet"}</option>
+            <option value="">{department ? "No units in that department" : "No units yet"}</option>
           ) : (
             <>
               <option value="">All units</option>
@@ -189,10 +146,10 @@ export function DashboardFilters({
         </select>
       </div>
 
-      {(department || brand || unit || grain !== "month") && (
+      {(department || unit || grain !== "month") && (
         <button
           type="button"
-          onClick={() => apply({ department: "", brand: "", unit: "", grain: "" })}
+          onClick={() => apply({ department: "", unit: "", grain: "" })}
           className="h-9 px-2 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
         >
           Clear

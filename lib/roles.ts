@@ -9,8 +9,8 @@ export const ROLE_LABELS: Record<Role, string> = {
   admin: "Admin",
   finance: "Finance",
   dept_manager: "Department manager",
-  line_manager: "Unit manager",
-  officer: "Officer",
+  line_manager: "Unit/Line manager",
+  officer: "Unit officer",
   viewer: "Viewer",
 }
 
@@ -19,7 +19,7 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   admin: "Manages people, departments and budgets.",
   finance: "Sets budgets, approves spend and records payments.",
   dept_manager: "Raises spend and manages lines in their departments.",
-  line_manager: "Edits their own units. Sees the rest of the department read-only.",
+  line_manager: "Edits their own unit and sends approvals up. Sees the rest of the department read-only.",
   officer: "Spends within their own units. Cannot change a budget.",
   viewer: "Read-only access.",
 }

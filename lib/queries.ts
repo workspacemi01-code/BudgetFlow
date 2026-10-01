@@ -183,23 +183,23 @@ export async function getBrands(
 export interface UnitOption {
   id: string
   name: string
-  brandId: string
+  departmentId: string
   officersCanSpend: boolean
 }
 
-/** Units, with the brand they hang off, so a picker can cascade. */
+/** Units, with the department they belong to, so a picker can narrow. */
 export async function getUnits(ctx: OrgContext): Promise<UnitOption[]> {
   const supabase = await createClient()
   const result = await supabase
     .from("units")
-    .select("id, name, brand_id, officers_can_spend")
+    .select("id, name, department_id, officers_can_spend")
     .eq("org_id", ctx.org.id)
     .is("archived_at", null)
     .order("name")
   return rows(result).map((u) => ({
     id: String(u.id),
     name: String(u.name),
-    brandId: String(u.brand_id),
+    departmentId: String(u.department_id),
     /* Absent means open: a unit is only closed when someone closes it. */
     officersCanSpend: u.officers_can_spend !== false,
   }))

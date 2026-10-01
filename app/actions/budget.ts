@@ -105,24 +105,20 @@ export async function addBudgetLine(_: FormState, formData: FormData): Promise<F
     }
   }
 
-  /* A unit sits inside a brand, so naming one without the other has nowhere to
-     go. Said plainly rather than silently dropping the unit. */
-  if (unitName && !brandName) {
-    return { error: `Pick a ${ctx.org.brand_label.toLowerCase()} before choosing a unit.` }
-  }
-
+  /* A unit belongs to the department, so it is found and created there —
+     typing a new name is how a unit comes into existence. */
   let unitId: string | null = null
-  if (unitName && brandId) {
+  if (unitName) {
     const { data: units, error: unitError } = await supabase
       .from("units")
       .select("id, name")
-      .eq("brand_id", brandId)
+      .eq("department_id", departmentId)
     if (unitError) return { error: unitError.message }
     unitId = (units?.find((u) => same(u.name, unitName))?.id as string | undefined) ?? null
     if (!unitId) {
       const { data, error } = await supabase
         .from("units")
-        .insert({ org_id: ctx.org.id, brand_id: brandId, name: unitName })
+        .insert({ org_id: ctx.org.id, department_id: departmentId, name: unitName })
         .select("id")
         .single()
       if (error) return { error: error.message }
