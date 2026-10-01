@@ -1,0 +1,238 @@
+import { PGlite } from '@electric-sql/pglite'
+import { readFileSync } from 'node:fs'
+
+/**
+ * Three levels: Department → Brand → Unit, with an officer per unit.
+ *
+ * The questions worth asking of a hierarchy this shape:
+ *   · does an officer in one unit stay out of its sibling?
+ *   · does closing a brand close every unit inside it?
+ *   · does closing one unit leave its siblings alone?
+ *   · does a budget line ask the deepest thing it belongs to, rather than
+ *     the department it happens to sit under?
+ */
+
+const MIGRATIONS = [
+  '0001_init.sql', '0002_service_role_grants.sql', '0003_invitations.sql',
+  '0004_personal_budgets.sql', '0005_unit_roles_enum.sql', '0006_unit_scoping.sql',
+  '0007_daily_spend.sql', '0008_org_brand_theme.sql', '0009_unit_table_grants.sql',
+  '0010_units.sql',
+].map((f) => new URL(`../migrations/${f}`, import.meta.url))
+
+const SUPABASE_STUB = `
+create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
+create schema auth; create schema storage;
+create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb default '{}');
+create function auth.uid() returns uuid language sql stable as $$
+  select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''),
+                  (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'))::uuid $$;
+create function auth.jwt() returns jsonb language sql stable as $$
+  select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
+create table storage.buckets (id text primary key, name text, public boolean);
+create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text);
+alter table storage.objects enable row level security;
+grant usage on schema auth, storage, public to anon, authenticated;
+grant execute on all functions in schema auth to anon, authenticated;
+grant select, insert on storage.objects to authenticated;
+`
+
+const db = new PGlite()
+let passed = 0, failed = 0
+const ok = (label, cond, extra = '') => {
+  if (cond) { passed++; console.log(`  ✓ ${label}`) }
+  else { failed++; console.log(`  ✗ ${label} ${extra}`) }
+}
+
+const U = {
+  owner:   { id: '11111111-1111-1111-1111-111111111111', email: 'owner@rite.test' },
+  deptmgr: { id: '22222222-2222-2222-2222-222222222222', email: 'deptmgr@rite.test' },
+  eventsLead:   { id: '33333333-3333-3333-3333-333333333333', email: 'events.lead@rite.test' },
+  eventsOfficer:{ id: '44444444-4444-4444-4444-444444444444', email: 'events.officer@rite.test' },
+  sosaOfficer:  { id: '55555555-5555-5555-5555-555555555555', email: 'sosa.officer@rite.test' },
+}
+
+async function as(user, sql, params = []) {
+  await db.exec(`set role authenticated;
+    select set_config('request.jwt.claims', '${JSON.stringify({ sub: user.id, email: user.email, role: 'authenticated' })}', false);`)
+  try { return (await db.query(sql, params)).rows }
+  finally { await db.exec(`reset role; select set_config('request.jwt.claims', '', false);`) }
+}
+const one = async (...a) => (await as(...a))[0]
+const svc = async (sql, params = []) => (await db.query(sql, params)).rows
+
+console.log('Applying migrations…')
+await db.exec(SUPABASE_STUB)
+for (const f of MIGRATIONS) await db.exec(readFileSync(f, 'utf8'))
+console.log('  ✓ 0001 → 0010 applied cleanly\n')
+
+for (const u of Object.values(U))
+  await svc(`insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)`,
+    [u.id, u.email, { full_name: u.email.split('@')[0] }])
+
+// ---------------------------------------------------------------------------
+console.log('Marketing → Fearless and Sosa → their units')
+// ---------------------------------------------------------------------------
+
+const [org] = await svc(
+  `insert into public.organizations (name, slug, currency, created_by)
+   values ('Rite Foods Nigeria', 'rite-foods', 'NGN', $1) returning *`, [U.owner.id])
+const [dept] = await svc(
+  `insert into public.departments (org_id, name, code) values ($1, 'Marketing', 'MKT') returning *`, [org.id])
+
+const [fearless] = await svc(
+  `insert into public.brands (org_id, department_id, name) values ($1, $2, 'Fearless Brand') returning *`,
+  [org.id, dept.id])
+/* Sosa is closed to officers at brand level — every unit inside it. */
+const [sosa] = await svc(
+  `insert into public.brands (org_id, department_id, name, officers_can_spend)
+   values ($1, $2, 'Sosa Brand', false) returning *`, [org.id, dept.id])
+
+const unit = {}
+for (const [key, brand, name] of [
+  ['events',   fearless, 'Events'],
+  ['creative', fearless, 'Creative Unit'],
+  ['sosaOps',  sosa,     'Sosa Operations'],
+]) {
+  const [u] = await svc(
+    `insert into public.units (org_id, brand_id, name) values ($1, $2, $3) returning *`,
+    [org.id, brand.id, name])
+  unit[key] = u
+}
+ok('units sit under brands, which sit under departments',
+   unit.events.brand_id === fearless.id && fearless.department_id === dept.id)
+
+const mem = {}
+for (const [key, role] of [
+  ['owner', 'owner'], ['deptmgr', 'dept_manager'],
+  ['eventsLead', 'line_manager'], ['eventsOfficer', 'officer'], ['sosaOfficer', 'officer'],
+]) {
+  const [m] = await svc(
+    `insert into public.memberships (org_id, user_id, role, status) values ($1, $2, $3, 'active') returning *`,
+    [org.id, U[key].id, role])
+  mem[key] = m
+}
+await svc(`insert into public.membership_departments (membership_id, department_id, org_id) values ($1,$2,$3)`,
+  [mem.deptmgr.id, dept.id, org.id])
+for (const [m, u] of [
+  [mem.eventsLead, unit.events],
+  [mem.eventsOfficer, unit.events],
+  [mem.sosaOfficer, unit.sosaOps],
+]) {
+  await svc(`insert into public.membership_units (membership_id, unit_id, org_id) values ($1,$2,$3)`,
+    [m.id, u.id, org.id])
+}
+
+const chk = async (user, fn, u) =>
+  (await one(user, `select private.${fn}($1, $2) as v`, [org.id, u.id])).v
+
+// ---------------------------------------------------------------------------
+console.log('\nSeeing — everyone in the department may look')
+// ---------------------------------------------------------------------------
+
+ok('the Events officer sees their own unit',   await chk(U.eventsOfficer, 'can_view_unit', unit.events) === true)
+ok('and sees Creative, which is not theirs',   await chk(U.eventsOfficer, 'can_view_unit', unit.creative) === true)
+ok('and sees a unit under Sosa',               await chk(U.eventsOfficer, 'can_view_unit', unit.sosaOps) === true)
+
+// ---------------------------------------------------------------------------
+console.log('\nEditing — a unit manager holds one unit, not the brand')
+// ---------------------------------------------------------------------------
+
+ok('the Events lead edits Events',             await chk(U.eventsLead, 'can_edit_unit', unit.events) === true)
+ok('the Events lead CANNOT edit Creative, its sibling under the same brand',
+   await chk(U.eventsLead, 'can_edit_unit', unit.creative) === false)
+ok('the department manager edits every unit in the department',
+   await chk(U.deptmgr, 'can_edit_unit', unit.creative) === true &&
+   await chk(U.deptmgr, 'can_edit_unit', unit.sosaOps) === true)
+ok('an officer edits nothing',                 await chk(U.eventsOfficer, 'can_edit_unit', unit.events) === false)
+
+// ---------------------------------------------------------------------------
+console.log('\nSpending — per unit, and closed where it is closed')
+// ---------------------------------------------------------------------------
+
+ok('the Events officer spends in Events',      await chk(U.eventsOfficer, 'can_spend_unit', unit.events) === true)
+ok('the Events officer CANNOT spend in Creative, its sibling',
+   await chk(U.eventsOfficer, 'can_spend_unit', unit.creative) === false)
+ok('the Sosa officer CANNOT spend in their own unit, because the brand is closed',
+   await chk(U.sosaOfficer, 'can_spend_unit', unit.sosaOps) === false)
+ok('but still sees it',                        await chk(U.sosaOfficer, 'can_view_unit', unit.sosaOps) === true)
+ok('closing a brand does not close a different brand',
+   await chk(U.eventsOfficer, 'can_spend_unit', unit.events) === true)
+ok('the department manager still spends under the closed brand',
+   await chk(U.deptmgr, 'can_spend_unit', unit.sosaOps) === true)
+
+// Closing one unit must not touch its siblings.
+await svc(`update public.units set officers_can_spend = false where id = $1`, [unit.events.id])
+ok('closing a single unit stops its officer',  await chk(U.eventsOfficer, 'can_spend_unit', unit.events) === false)
+ok('and leaves its sibling open to the department manager',
+   await chk(U.deptmgr, 'can_spend_unit', unit.creative) === true)
+await svc(`update public.units set officers_can_spend = true where id = $1`, [unit.events.id])
+
+// ---------------------------------------------------------------------------
+console.log('\nA budget line asks the deepest thing it belongs to')
+// ---------------------------------------------------------------------------
+
+const [period] = await svc(
+  `insert into public.budget_periods (org_id, name, start_date, end_date, status)
+   values ($1, 'FY2026', date '2026-01-01', date '2026-12-31', 'open') returning *`, [org.id])
+const [cat] = await svc(
+  `insert into public.categories (org_id, name) values ($1, 'Advertising') returning *`, [org.id])
+
+const [eventsLine] = await svc(
+  `insert into public.budget_lines (org_id, period_id, department_id, brand_id, unit_id, category_id, annual_budget)
+   values ($1,$2,$3,$4,$5,$6, 4000000) returning *`,
+  [org.id, period.id, dept.id, fearless.id, unit.events.id, cat.id])
+const [creativeLine] = await svc(
+  `insert into public.budget_lines (org_id, period_id, department_id, brand_id, unit_id, category_id, annual_budget)
+   values ($1,$2,$3,$4,$5,$6, 2000000) returning *`,
+  [org.id, period.id, dept.id, fearless.id, unit.creative.id, cat.id])
+
+ok('two units under one brand can hold the same category without colliding',
+   eventsLine.id !== creativeLine.id)
+
+const lineChk = async (user, fn, line) =>
+  (await one(user, `select private.${fn}($1) as v`, [line.id])).v
+
+ok('the Events officer may spend on the Events line',
+   await lineChk(U.eventsOfficer, 'can_spend_line', eventsLine) === true)
+ok('the Events officer may NOT spend on the Creative line',
+   await lineChk(U.eventsOfficer, 'can_spend_line', creativeLine) === false)
+ok('but can still read it',
+   await lineChk(U.eventsOfficer, 'can_view_line', creativeLine) === true)
+
+// ---------------------------------------------------------------------------
+console.log('\nRow-level security enforces it, not just the functions')
+// ---------------------------------------------------------------------------
+
+let blocked = false
+try {
+  await as(U.eventsOfficer,
+    `insert into public.transactions (org_id, budget_line_id, txn_code, txn_type, status, approved_amount, description, created_by)
+     values ($1,$2,'TXN-X','expense','draft',1000,'not allowed',$3)`,
+    [org.id, creativeLine.id, U.eventsOfficer.id])
+} catch { blocked = true }
+ok('RLS blocks an officer writing against a sibling unit', blocked)
+
+let allowed = false
+try {
+  await as(U.eventsOfficer,
+    `insert into public.transactions (org_id, budget_line_id, txn_code, txn_type, status, approved_amount, description, created_by)
+     values ($1,$2,'TXN-Y','expense','draft',1000,'allowed',$3)`,
+    [org.id, eventsLine.id, U.eventsOfficer.id])
+  allowed = true
+} catch (e) { console.log(`      (${e.message})`) }
+ok('RLS allows an officer writing against their own unit', allowed)
+
+let readable = true
+try { await as(U.owner, `select id, name from public.units limit 1`) }
+catch (e) { readable = false; console.log(`      (${e.message})`) }
+ok('a signed-in user can read units', readable)
+
+let unitsWritable = true
+try {
+  await as(U.owner, `insert into public.membership_units (membership_id, unit_id, org_id) values ($1,$2,$3)`,
+    [mem.deptmgr.id, unit.creative.id, org.id])
+} catch (e) { unitsWritable = false; console.log(`      (${e.message})`) }
+ok('an admin can attach someone to a unit from the app', unitsWritable)
+
+console.log(`\n${passed} passed, ${failed} failed`)
+process.exit(failed === 0 ? 0 : 1)
