@@ -4,14 +4,14 @@ import { ApprovalQueue } from "@/components/approval-queue"
 import { PageHeader } from "@/components/page-header"
 import { PaymentQueue } from "@/components/payment-queue"
 import { getLineTotals, getTransactions, profileNames } from "@/lib/queries"
-import { isAdmin, isApprover } from "@/lib/roles"
+import { canApproveSpend, isAdmin } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
 
 export const metadata: Metadata = { title: "Approvals" }
 
 export default async function ApprovalsPage() {
   const ctx = await requireOrg()
-  const approver = isApprover(ctx.role)
+  const approver = canApproveSpend(ctx.role)
   const [pending, toPay, lines] = await Promise.all([
     getTransactions(ctx, { statuses: ["pending"] }),
     approver ? getTransactions(ctx, { statuses: ["approved", "partially_paid"] }) : Promise.resolve([]),

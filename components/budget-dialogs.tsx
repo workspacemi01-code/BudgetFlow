@@ -65,6 +65,8 @@ export function AddDepartmentDialog({ currency }: { currency: string }) {
 interface LineDialogProps {
   currency: string
   departments: { id: string; name: string }[]
+  /** Units with the department they belong to, so the list can narrow. */
+  units: { id: string; name: string; departmentId: string }[]
   categories: string[]
   canAddCategory: boolean
 }
@@ -72,12 +74,14 @@ interface LineDialogProps {
 function AddLineForm({
   currency,
   departments,
+  units,
   categories,
   canAddCategory,
   onDone,
 }: LineDialogProps & { onDone: () => void }) {
   const [state, action] = useDialogAction(addBudgetLine, onDone)
   const [departmentId, setDepartmentId] = useState(departments.length === 1 ? departments[0].id : "")
+  const unitsHere = units.filter((u) => u.departmentId === departmentId)
 
   return (
     <form action={action} className="grid gap-4">
@@ -98,11 +102,30 @@ function AddLineForm({
           ))}
         </select>
       </Field>
-      {/* No brand field. It was optional, and an optional question about a
-          level most people here do not think in still reads as something you
-          have to deal with before reaching the one that matters — the
-          category. Lines that already have a brand keep it, and still show
-          it; new ones are simply Department › Category. */}
+      {/* Department › Unit › Category, the order the business uses. The unit is
+          typed against what exists, so creating Events or Sosa Brand is typing
+          it once. Optional: a cost the department carries as a whole has no
+          unit. */}
+      <Field
+        label="Unit"
+        htmlFor="line-unit"
+        hint={departmentId ? "Optional. Leave empty for a department-wide line." : "Choose a department first."}
+      >
+        <Input
+          id="line-unit"
+          name="unit"
+          list="line-units"
+          disabled={!departmentId}
+          className="h-11"
+          autoComplete="off"
+          placeholder="e.g. Events, Sosa Brand"
+        />
+        <datalist id="line-units">
+          {unitsHere.map((u) => (
+            <option key={u.id} value={u.name} />
+          ))}
+        </datalist>
+      </Field>
       <Field
         label="Category"
         htmlFor="line-category"

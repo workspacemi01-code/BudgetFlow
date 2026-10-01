@@ -94,7 +94,7 @@ export function InviteForm({
 }: {
   roles: Role[]
   departments: { id: string; name: string }[]
-  units?: { id: string; name: string; departmentName: string }[]
+  units?: { id: string; name: string; path: string }[]
   unitLabel?: string
 }) {
   const [state, action] = useActionState(inviteMember, initial)
@@ -129,21 +129,19 @@ export function InviteForm({
       </div>
       {unitScoped && (
         <fieldset className="grid gap-2">
-          <legend className="mb-1 text-sm font-medium">
-            {unitLabel}s they work in
-          </legend>
+          <legend className="mb-1 text-sm font-medium">Units they work in</legend>
           {units.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              Add {unitLabel.toLowerCase()}s to a department first.
+              Create a unit first — add a budget line with a {unitLabel.toLowerCase()} and a unit.
             </p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {units.map((u) => (
                 <label key={u.id} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="brandIds" value={u.id} className="size-4 accent-[var(--primary)]" />
+                  <input type="checkbox" name="unitIds" value={u.id} className="size-4 accent-[var(--primary)]" />
                   <span className="min-w-0">
                     {u.name}
-                    <span className="block text-xs text-muted-foreground">{u.departmentName}</span>
+                    <span className="block text-xs text-muted-foreground">{u.path}</span>
                   </span>
                 </label>
               ))}

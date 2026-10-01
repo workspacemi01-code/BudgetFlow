@@ -54,6 +54,7 @@ export async function addBudgetLine(_: FormState, formData: FormData): Promise<F
 
   const departmentId = String(formData.get("departmentId") ?? "")
   const brandName = String(formData.get("brand") ?? "").trim()
+  const unitName = String(formData.get("unit") ?? "").trim()
   const categoryName = String(formData.get("category") ?? "").trim()
   const budget = amountFrom(formData, "budget")
   if (!departmentId) return { error: "Choose a department." }
@@ -104,11 +105,33 @@ export async function addBudgetLine(_: FormState, formData: FormData): Promise<F
     }
   }
 
+  /* A unit belongs to the department, so it is found and created there —
+     typing a new name is how a unit comes into existence. */
+  let unitId: string | null = null
+  if (unitName) {
+    const { data: units, error: unitError } = await supabase
+      .from("units")
+      .select("id, name")
+      .eq("department_id", departmentId)
+    if (unitError) return { error: unitError.message }
+    unitId = (units?.find((u) => same(u.name, unitName))?.id as string | undefined) ?? null
+    if (!unitId) {
+      const { data, error } = await supabase
+        .from("units")
+        .insert({ org_id: ctx.org.id, department_id: departmentId, name: unitName })
+        .select("id")
+        .single()
+      if (error) return { error: error.message }
+      unitId = data.id
+    }
+  }
+
   const { error } = await supabase.from("budget_lines").insert({
     org_id: ctx.org.id,
     period_id: ctx.period.id,
     department_id: departmentId,
     brand_id: brandId,
+    unit_id: unitId,
     category_id: categoryId,
     annual_budget: budget,
   })

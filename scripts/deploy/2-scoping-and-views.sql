@@ -410,6 +410,757 @@ grant select on public.v_daily_spend to authenticated;
 grant select on public.v_daily_spend to service_role;
 
 
+-- ---------------- 0010_units.sql ----------------
+
+-- The third level: Department → Brand → Unit.
+--
+-- The schema stopped at two. "Marketing → Sosa Brand" could be said; "Marketing
+-- → Sosa Brand → Events" could not, and an officer belongs to that third thing,
+-- not to the brand above it.
+--
+-- So units sit under brands, officers and unit managers attach to units, and a
+-- budget line may sit at any of the three depths:
+--
+--   department only          a cost the department carries as a whole
+--   department + brand       a cost the brand carries across its units
+--   department + brand + unit  a cost one unit carries
+--
+-- Spending stays closed where it was closed. officers_can_spend remains on the
+-- brand, because that is the level the business named — "officers cannot spend
+-- within the Sosa budget" is about Sosa, and every unit inside it. A unit can
+-- also be closed on its own without closing its siblings.
+
+
+-- -----------------------------------------------------------------------------
+-- 1. Units
+-- -----------------------------------------------------------------------------
+
+create table if not exists public.units (
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid not null references public.organizations (id) on delete cascade,
+  brand_id    uuid not null,
+  name        text not null check (char_length(name) between 1 and 120),
+  code        text check (char_length(code) between 1 and 20),
+  /* Closes this unit alone. The brand's own flag closes every unit in it. */
+  officers_can_spend boolean not null default true,
+  archived_at timestamptz,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (id, org_id),
+  unique (id, brand_id),
+  unique (brand_id, name),
+  foreign key (brand_id, org_id) references public.brands (id, org_id) on delete cascade
+);
+
+create index if not exists units_brand_id_idx on public.units (brand_id);
+create index if not exists units_org_id_idx   on public.units (org_id);
+
+comment on table public.units is
+  'The level below a brand. An officer belongs to a unit; a unit manager edits one.';
+
+alter table public.units enable row level security;
+
+drop policy if exists units_select on public.units;
+create policy units_select on public.units for select to authenticated
+  using (private.can_view_brand(org_id, brand_id));
+
+drop policy if exists units_write on public.units;
+create policy units_write on public.units for all to authenticated
+  using (private.can_edit_brand(org_id, brand_id))
+  with check (private.can_edit_brand(org_id, brand_id));
+
+grant select, insert, update, delete on public.units to authenticated;
+grant select, insert, update, delete on public.units to service_role;
+
+drop trigger if exists units_set_updated_at on public.units;
+create trigger units_set_updated_at before update on public.units
+  for each row execute function private.set_updated_at();
+
+drop trigger if exists units_audit on public.units;
+create trigger units_audit after insert or update or delete on public.units
+  for each row execute function private.audit_row();
+
+
+-- -----------------------------------------------------------------------------
+-- 2. People belong to units
+-- -----------------------------------------------------------------------------
+
+create table if not exists public.membership_units (
+  membership_id uuid not null,
+  unit_id       uuid not null,
+  org_id        uuid not null references public.organizations (id) on delete cascade,
+  created_at    timestamptz not null default now(),
+  primary key (membership_id, unit_id),
+  foreign key (membership_id, org_id) references public.memberships (id, org_id) on delete cascade,
+  foreign key (unit_id, org_id) references public.units (id, org_id) on delete cascade
+);
+
+create index if not exists membership_units_unit_id_idx on public.membership_units (unit_id);
+create index if not exists membership_units_org_id_idx  on public.membership_units (org_id);
+
+alter table public.membership_units enable row level security;
+
+drop policy if exists membership_units_select on public.membership_units;
+create policy membership_units_select on public.membership_units for select to authenticated
+  using (private.is_org_member(org_id));
+
+drop policy if exists membership_units_insert on public.membership_units;
+create policy membership_units_insert on public.membership_units for insert to authenticated
+  with check (private.is_org_admin(org_id));
+
+drop policy if exists membership_units_delete on public.membership_units;
+create policy membership_units_delete on public.membership_units for delete to authenticated
+  using (private.is_org_admin(org_id));
+
+/* Said explicitly, because 0001's blanket grant only covered the tables that
+   existed when it ran — the omission that broke the Settings page once already. */
+grant select, insert, update, delete on public.membership_units to authenticated;
+grant select, insert, update, delete on public.membership_units to service_role;
+
+drop trigger if exists membership_units_audit on public.membership_units;
+create trigger membership_units_audit
+  after insert or update or delete on public.membership_units
+  for each row execute function private.audit_row();
+
+
+-- -----------------------------------------------------------------------------
+-- 3. A budget line can sit on a unit
+-- -----------------------------------------------------------------------------
+
+alter table public.budget_lines
+  add column if not exists unit_id uuid;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'budget_lines_unit_id_brand_id_fkey'
+  ) then
+    alter table public.budget_lines
+      add constraint budget_lines_unit_id_brand_id_fkey
+      foreign key (unit_id, brand_id) references public.units (id, brand_id);
+  end if;
+end $$;
+
+/* The uniqueness of a line now includes its unit: Marketing → Sosa → Events →
+   Advertising and Marketing → Sosa → Creative → Advertising are two lines, not
+   a conflict. */
+alter table public.budget_lines
+  drop constraint if exists budget_lines_period_id_department_id_brand_id_category_id_key;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'budget_lines_period_dept_brand_unit_category_key'
+  ) then
+    alter table public.budget_lines
+      add constraint budget_lines_period_dept_brand_unit_category_key
+      unique nulls not distinct (period_id, department_id, brand_id, unit_id, category_id);
+  end if;
+end $$;
+
+create index if not exists budget_lines_unit_id_idx on public.budget_lines (unit_id);
+
+
+-- -----------------------------------------------------------------------------
+-- 4. The rules, at unit level
+-- -----------------------------------------------------------------------------
+
+-- Seeing a unit follows seeing its brand, which follows seeing its department.
+-- A unit manager still reads the rest of the department; only editing narrows.
+create or replace function private.can_view_unit(p_org uuid, p_unit uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select private.can_view_brand(u.org_id, u.brand_id)
+    from public.units u where u.id = p_unit and u.org_id = p_org
+  ), false)
+$$;
+
+create or replace function private.can_edit_unit(p_org uuid, p_unit uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when m.role in ('owner', 'admin', 'finance') then true
+      /* A department manager runs everything inside their department. */
+      when m.role = 'dept_manager' then exists (
+        select 1
+        from public.membership_departments md
+        join public.brands b on b.department_id = md.department_id
+        join public.units u on u.brand_id = b.id
+        where md.membership_id = m.id and u.id = p_unit)
+      /* A unit manager edits the units they hold, and no others. */
+      when m.role = 'line_manager' then exists (
+        select 1 from public.membership_units mu
+        where mu.membership_id = m.id and mu.unit_id = p_unit)
+      else false
+    end
+    from public.memberships m
+    where m.org_id = p_org and m.user_id = (select auth.uid()) and m.status = 'active'
+  ), false)
+$$;
+
+-- Spending is its own question: an officer spends without editing. Closed is
+-- closed at either level — the brand shuts all its units, a unit shuts itself.
+create or replace function private.can_spend_unit(p_org uuid, p_unit uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when m.role in ('owner', 'admin', 'finance') then true
+      when m.role = 'dept_manager' then exists (
+        select 1
+        from public.membership_departments md
+        join public.brands b on b.department_id = md.department_id
+        join public.units u on u.brand_id = b.id
+        where md.membership_id = m.id and u.id = p_unit)
+      when m.role = 'line_manager' then exists (
+        select 1 from public.membership_units mu
+        where mu.membership_id = m.id and mu.unit_id = p_unit)
+      when m.role = 'officer' then exists (
+        select 1
+        from public.membership_units mu
+        join public.units u on u.id = mu.unit_id
+        join public.brands b on b.id = u.brand_id
+        where mu.membership_id = m.id
+          and mu.unit_id = p_unit
+          and u.officers_can_spend
+          and b.officers_can_spend)
+      else false
+    end
+    from public.memberships m
+    where m.org_id = p_org and m.user_id = (select auth.uid()) and m.status = 'active'
+  ), false)
+$$;
+
+grant execute on function private.can_view_unit(uuid, uuid)  to authenticated;
+grant execute on function private.can_edit_unit(uuid, uuid)  to authenticated;
+grant execute on function private.can_spend_unit(uuid, uuid) to authenticated;
+
+
+-- -----------------------------------------------------------------------------
+-- 4b. Reaching the department through a unit
+--
+-- can_view_department recognised membership_departments and membership_brands.
+-- With people now attached to units instead, a unit officer belonged to nothing
+-- it knew about: they could not see their department, so not their brand, so
+-- not their own unit. Everything above this line worked and the officer saw an
+-- empty screen.
+-- -----------------------------------------------------------------------------
+
+create or replace function private.can_view_department(p_org uuid, p_department uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when m.role in ('owner', 'admin', 'finance') then true
+      when m.role = 'dept_manager' then exists (
+        select 1 from public.membership_departments md
+        where md.membership_id = m.id and md.department_id = p_department)
+      when m.role in ('line_manager', 'officer') then
+        exists (
+          select 1 from public.membership_departments md
+          where md.membership_id = m.id and md.department_id = p_department)
+        or exists (
+          select 1 from public.membership_brands mb
+          join public.brands b on b.id = mb.brand_id
+          where mb.membership_id = m.id and b.department_id = p_department)
+        or exists (
+          select 1 from public.membership_units mu
+          join public.units u on u.id = mu.unit_id
+          join public.brands b on b.id = u.brand_id
+          where mu.membership_id = m.id and b.department_id = p_department)
+      when m.role = 'viewer' then
+        not exists (select 1 from public.membership_departments md where md.membership_id = m.id)
+        or exists (
+          select 1 from public.membership_departments md
+          where md.membership_id = m.id and md.department_id = p_department)
+      else false
+    end
+    from public.memberships m
+    where m.org_id = p_org and m.user_id = (select auth.uid()) and m.status = 'active'
+  ), false)
+$$;
+
+
+-- -----------------------------------------------------------------------------
+-- 5. A budget line asks the deepest thing it belongs to
+-- -----------------------------------------------------------------------------
+
+create or replace function private.can_view_line(p_line uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when bl.unit_id  is not null then private.can_view_unit(bl.org_id, bl.unit_id)
+      when bl.brand_id is not null then private.can_view_brand(bl.org_id, bl.brand_id)
+      else private.can_view_department(bl.org_id, bl.department_id)
+    end
+    from public.budget_lines bl where bl.id = p_line
+  ), false)
+$$;
+
+create or replace function private.can_edit_line(p_line uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when bl.unit_id  is not null then private.can_edit_unit(bl.org_id, bl.unit_id)
+      when bl.brand_id is not null then private.can_edit_brand(bl.org_id, bl.brand_id)
+      else private.can_edit_department(bl.org_id, bl.department_id)
+    end
+    from public.budget_lines bl where bl.id = p_line
+  ), false)
+$$;
+
+create or replace function private.can_spend_line(p_line uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when bl.unit_id  is not null then private.can_spend_unit(bl.org_id, bl.unit_id)
+      when bl.brand_id is not null then private.can_spend_brand(bl.org_id, bl.brand_id)
+      else private.can_edit_department(bl.org_id, bl.department_id)
+    end
+    from public.budget_lines bl where bl.id = p_line
+  ), false)
+$$;
+
+
+-- ---------------- 0011_department_approval.sql ----------------
+
+-- Department managers give final approval for their own department.
+--
+-- The brief is explicit about the chain:
+--
+--   Unit/Line Managers  "can send approvals to Department managers"
+--   Department Managers "give final approval of all spending in a department"
+--
+-- The trigger said:
+--
+--   if new.status in ('approved', 'rejected')
+--      and v_role not in ('owner', 'admin', 'finance') then
+--     raise exception 'Only owners, admins and finance can approve or reject';
+--
+-- so a department manager could raise spend and then wait for head office to
+-- approve it — the one thing their role exists to do, refused. Sending an
+-- approval upward already worked, because submitting is just moving a
+-- transaction to 'pending'; it was the receiving end that was missing.
+--
+-- Approval is now scoped the way viewing and editing already are: a department
+-- manager approves what belongs to their departments, and nothing else. Owners,
+-- admins and finance are unchanged and still approve anywhere.
+
+create or replace function private.can_approve_line(p_line uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when m.role in ('owner', 'admin', 'finance') then true
+      /* Final approval for their own department, every unit and brand inside
+         it. Deliberately the department, not the unit: a unit manager sends
+         the request up precisely because the decision is not theirs. */
+      when m.role = 'dept_manager' then exists (
+        select 1 from public.membership_departments md
+        where md.membership_id = m.id and md.department_id = bl.department_id)
+      else false
+    end
+    from public.budget_lines bl
+    join public.memberships m
+      on m.org_id = bl.org_id
+     and m.user_id = (select auth.uid())
+     and m.status = 'active'
+    where bl.id = p_line
+  ), false)
+$$;
+
+grant execute on function private.can_approve_line(uuid) to authenticated;
+
+
+
+-- The trigger below is 0001's guard_transaction, verbatim, with that single
+-- condition swapped. Taken from the original rather than retyped: a first
+-- attempt at rewriting it from memory silently lost the closed-period check,
+-- the org_id immutability check and the service-role bypass. A diff against
+-- 0001 caught it. Nothing else here differs.
+
+create or replace function private.guard_transaction()
+returns trigger
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  v_uid         uuid := auth.uid();
+  v_role        public.org_role;
+  v_paid        numeric(18, 2);
+  v_derived     public.txn_status;
+  v_available   numeric;
+  v_allow_over  boolean;
+begin
+  if tg_op = 'UPDATE' and new.org_id <> old.org_id then
+    raise exception 'org_id is immutable';
+  end if;
+  if v_uid is null then
+    return new;  -- trusted server-side context
+  end if;
+
+  v_role := private.org_role(new.org_id);
+  if v_role is null then
+    raise exception 'Not a member of this organization' using errcode = '42501';
+  end if;
+  if exists (
+    select 1 from public.budget_lines bl
+    join public.budget_periods bp on bp.id = bl.period_id
+    where bl.id = new.budget_line_id and bp.status = 'closed') then
+    raise exception 'Budget period is closed';
+  end if;
+
+  if tg_op = 'INSERT' then
+    if new.status not in ('draft', 'pending') then
+      raise exception 'New transactions must start as draft or pending';
+    end if;
+    if new.txn_type = 'adjustment' and v_role not in ('owner', 'admin', 'finance') then
+      raise exception 'Only finance can record adjustments' using errcode = '42501';
+    end if;
+    new.created_by   := v_uid;
+    new.submitted_at := case when new.status = 'pending' then now() end;
+    new.over_budget  := false;
+    new.approved_by  := null;  new.approved_at := null;
+    new.rejected_by  := null;  new.rejected_at := null;  new.rejection_reason := null;
+    new.voided_by    := null;  new.voided_at   := null;  new.void_reason      := null;
+    return new;
+  end if;
+
+  -- UPDATE
+  if old.status = 'voided' then
+    raise exception 'Voided transactions cannot be changed';
+  end if;
+  if new.txn_code <> old.txn_code or new.created_by is distinct from old.created_by then
+    raise exception 'txn_code and created_by are immutable';
+  end if;
+  if old.status not in ('draft', 'pending', 'rejected')
+     and (new.budget_line_id, new.approved_amount, new.txn_type)
+         is distinct from (old.budget_line_id, old.approved_amount, old.txn_type) then
+    raise exception 'Amount and budget line are locked once approved; void and re-create instead';
+  end if;
+
+  -- System-managed columns are only changed by the transitions below.
+  new.submitted_at := old.submitted_at;
+  new.over_budget  := old.over_budget;
+  new.approved_by  := old.approved_by;  new.approved_at := old.approved_at;
+  new.rejected_by  := old.rejected_by;  new.rejected_at := old.rejected_at;
+  new.voided_by    := old.voided_by;    new.voided_at   := old.voided_at;
+  if new.status = old.status then
+    new.rejection_reason := old.rejection_reason;
+    new.void_reason      := old.void_reason;
+    return new;
+  end if;
+
+  select coalesce(sum(p.amount), 0) into v_paid
+  from public.payments p
+  where p.transaction_id = new.id and p.voided_at is null;
+
+  if old.status in ('approved', 'partially_paid', 'paid')
+     and new.status in ('approved', 'partially_paid', 'paid') then
+    v_derived := case
+      when v_paid = 0 then 'approved'::public.txn_status
+      when v_paid = old.approved_amount then 'paid'::public.txn_status
+      else 'partially_paid'::public.txn_status
+    end;
+    if new.status <> v_derived then
+      raise exception 'Payment status is derived from payments; record or void a payment instead';
+    end if;
+    return new;
+  end if;
+
+  if not (
+       (old.status = 'draft'    and new.status in ('pending', 'voided'))
+    or (old.status = 'pending'  and new.status in ('draft', 'approved', 'rejected', 'voided'))
+    or (old.status = 'rejected' and new.status in ('draft', 'pending', 'voided'))
+    or (old.status = 'approved' and new.status = 'voided')
+  ) then
+    raise exception 'Invalid status change from % to %', old.status, new.status;
+  end if;
+
+  /* The one change from 0001: who may decide, rather than which three roles.
+     A department manager gives final approval for their own department, which
+     is the role's whole purpose and was refused here. */
+  if new.status in ('approved', 'rejected') and not private.can_approve_line(new.budget_line_id) then
+    raise exception 'Only an approver, or the manager of this department, can approve or reject'
+      using errcode = '42501';
+  end if;
+
+  case new.status
+    when 'pending' then
+      new.submitted_at := now();
+    when 'draft' then
+      new.submitted_at := null;
+    when 'rejected' then
+      new.rejected_by := v_uid;
+      new.rejected_at := now();
+    when 'voided' then
+      if v_paid <> 0 then
+        raise exception 'Void this transaction''s payments first, or record an adjustment';
+      end if;
+      if v_role not in ('owner', 'admin', 'finance')
+         and not (old.status in ('draft', 'pending', 'rejected') and old.created_by = v_uid) then
+        raise exception 'You can only void your own unapproved transactions' using errcode = '42501';
+      end if;
+      if coalesce(btrim(new.void_reason), '') = '' then
+        raise exception 'A reason is required to void a transaction';
+      end if;
+      new.voided_by := v_uid;
+      new.voided_at := now();
+    when 'approved' then
+      new.approved_by := v_uid;
+      new.approved_at := now();
+      if new.approved_amount > 0 then
+        -- Serialise approvals and transfers on this line.
+        perform 1 from public.budget_lines bl where bl.id = new.budget_line_id for update;
+        v_available := private.line_available(new.budget_line_id);
+        if new.approved_amount > v_available then
+          select o.allow_over_budget into v_allow_over from public.organizations o where o.id = new.org_id;
+          if not v_allow_over then
+            raise exception 'Over budget: % available on this line, % requested', v_available, new.approved_amount;
+          end if;
+          if v_role not in ('owner', 'admin') then
+            raise exception 'Over-budget approval requires an owner or admin' using errcode = '42501';
+          end if;
+          new.over_budget := true;
+        end if;
+      end if;
+    else
+      null;
+  end case;
+  return new;
+end;
+$$;
+
+
+-- ---------------- 0012_units_under_departments.sql ----------------
+
+-- A unit belongs to a department.
+--
+-- The brief, read plainly: "within Marketing, there are various units like
+-- Creative Unit, Events, and Fearless Brand, Sosa Brand, Bigi Brand and Bakery
+-- Brand." Six units in one department. "Brand" is part of four of those names,
+-- not a level above them.
+--
+-- 0010 hung units off brands, which put a step between a department and its
+-- units that the business does not use: picking a budget line meant choosing a
+-- brand before a unit, and there was nothing to choose.
+--
+-- So units now hang off departments. The brand column stays, nullable, because
+-- it costs nothing and an organisation that does group units under brands can
+-- still say so — but nothing requires it, and no screen asks for it.
+
+-- -----------------------------------------------------------------------------
+-- 1. Point units at a department
+-- -----------------------------------------------------------------------------
+
+alter table public.units
+  add column if not exists department_id uuid;
+
+/* Existing units reach their department through the brand they were created
+   under, so nothing has to be re-entered. */
+update public.units u
+set    department_id = b.department_id
+from   public.brands b
+where  u.brand_id = b.id and u.department_id is null;
+
+alter table public.units
+  alter column brand_id drop not null;
+
+do $$
+begin
+  if exists (select 1 from public.units where department_id is null) then
+    raise exception 'Some units have no department. Resolve before continuing.';
+  end if;
+end $$;
+
+alter table public.units
+  alter column department_id set not null;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'units_department_id_org_id_fkey') then
+    alter table public.units
+      add constraint units_department_id_org_id_fkey
+      foreign key (department_id, org_id) references public.departments (id, org_id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'units_id_department_id_key') then
+    alter table public.units add constraint units_id_department_id_key unique (id, department_id);
+  end if;
+end $$;
+
+/* A unit's name is unique within its department now, not within a brand. */
+alter table public.units drop constraint if exists units_brand_id_name_key;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'units_department_id_name_key') then
+    alter table public.units add constraint units_department_id_name_key unique (department_id, name);
+  end if;
+end $$;
+
+create index if not exists units_department_id_idx on public.units (department_id);
+
+
+-- -----------------------------------------------------------------------------
+-- 2. The rules follow the department
+-- -----------------------------------------------------------------------------
+
+-- Everyone in the department sees every unit in it — the brief says a unit
+-- manager "can view other brands/unit within the department".
+create or replace function private.can_view_unit(p_org uuid, p_unit uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select private.can_view_department(u.org_id, u.department_id)
+    from public.units u where u.id = p_unit and u.org_id = p_org
+  ), false)
+$$;
+
+create or replace function private.can_edit_unit(p_org uuid, p_unit uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when m.role in ('owner', 'admin', 'finance') then true
+      when m.role = 'dept_manager' then exists (
+        select 1 from public.membership_departments md
+        where md.membership_id = m.id and md.department_id = u.department_id)
+      /* "Line managers can edit and make changes within an individual unit."
+         Theirs, and no other — they may look at the rest and not touch it. */
+      when m.role = 'line_manager' then exists (
+        select 1 from public.membership_units mu
+        where mu.membership_id = m.id and mu.unit_id = p_unit)
+      else false
+    end
+    from public.units u
+    join public.memberships m
+      on m.org_id = u.org_id and m.user_id = (select auth.uid()) and m.status = 'active'
+    where u.id = p_unit and u.org_id = p_org
+  ), false)
+$$;
+
+-- "Officers ... can spend within their units, but they can't spend within
+-- Sosa Budget." Closed is closed: the unit's own flag, or its brand's if it
+-- has one.
+create or replace function private.can_spend_unit(p_org uuid, p_unit uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when m.role in ('owner', 'admin', 'finance') then true
+      when m.role = 'dept_manager' then exists (
+        select 1 from public.membership_departments md
+        where md.membership_id = m.id and md.department_id = u.department_id)
+      when m.role = 'line_manager' then exists (
+        select 1 from public.membership_units mu
+        where mu.membership_id = m.id and mu.unit_id = p_unit)
+      when m.role = 'officer' then
+        u.officers_can_spend
+        and coalesce((select b.officers_can_spend from public.brands b where b.id = u.brand_id), true)
+        and exists (
+          select 1 from public.membership_units mu
+          where mu.membership_id = m.id and mu.unit_id = p_unit)
+      else false
+    end
+    from public.units u
+    join public.memberships m
+      on m.org_id = u.org_id and m.user_id = (select auth.uid()) and m.status = 'active'
+    where u.id = p_unit and u.org_id = p_org
+  ), false)
+$$;
+
+
+-- -----------------------------------------------------------------------------
+-- 2b. Reaching the department from a unit
+--
+-- can_view_department found a person's units by joining through the brand
+-- above them. With units hanging off departments directly that join matches
+-- nothing, so a unit officer belonged to nothing it recognised and saw an empty
+-- screen — the same failure 0010 fixed, reintroduced by moving the level.
+-- -----------------------------------------------------------------------------
+
+create or replace function private.can_view_department(p_org uuid, p_department uuid)
+returns boolean
+language sql stable security definer set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when m.role in ('owner', 'admin', 'finance') then true
+      when m.role = 'dept_manager' then exists (
+        select 1 from public.membership_departments md
+        where md.membership_id = m.id and md.department_id = p_department)
+      /* A unit manager or officer reaches their department through their
+         units. The brief grants them the whole department to look at. */
+      when m.role in ('line_manager', 'officer') then
+        exists (
+          select 1 from public.membership_departments md
+          where md.membership_id = m.id and md.department_id = p_department)
+        or exists (
+          select 1 from public.membership_units mu
+          join public.units u on u.id = mu.unit_id
+          where mu.membership_id = m.id and u.department_id = p_department)
+      when m.role = 'viewer' then
+        not exists (select 1 from public.membership_departments md where md.membership_id = m.id)
+        or exists (
+          select 1 from public.membership_departments md
+          where md.membership_id = m.id and md.department_id = p_department)
+      else false
+    end
+    from public.memberships m
+    where m.org_id = p_org and m.user_id = (select auth.uid()) and m.status = 'active'
+  ), false)
+$$;
+
+
+-- -----------------------------------------------------------------------------
+-- 3. A budget line is Department › Unit › Category
+-- -----------------------------------------------------------------------------
+
+/* The unit no longer has to agree with a brand, because a line need not have
+   one. It must agree with the department. */
+alter table public.budget_lines
+  drop constraint if exists budget_lines_unit_id_brand_id_fkey;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'budget_lines_unit_id_department_id_fkey'
+  ) then
+    alter table public.budget_lines
+      add constraint budget_lines_unit_id_department_id_fkey
+      foreign key (unit_id, department_id) references public.units (id, department_id);
+  end if;
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- 4. Units are visible and writable through their department
+-- -----------------------------------------------------------------------------
+
+drop policy if exists units_select on public.units;
+create policy units_select on public.units for select to authenticated
+  using (private.can_view_department(org_id, department_id));
+
+drop policy if exists units_write on public.units;
+create policy units_write on public.units for all to authenticated
+  using (private.can_edit_department(org_id, department_id))
+  with check (private.can_edit_department(org_id, department_id));
+
+
 -- ============================================================================
 --  Verification — every row should read OK.
 -- ============================================================================
@@ -438,6 +1189,22 @@ union all
 select 'app can read membership_brands',
        case when has_table_privilege('authenticated', 'public.membership_brands', 'SELECT')
        then 'OK' else 'MISSING GRANT' end
+union all
+select 'units table',
+       case when to_regclass('public.units') is not null then 'OK' else 'MISSING' end
+union all
+select 'membership_units table',
+       case when to_regclass('public.membership_units') is not null then 'OK' else 'MISSING' end
+union all
+select 'budget_lines.unit_id',
+       case when exists (select 1 from information_schema.columns
+         where table_schema='public' and table_name='budget_lines' and column_name='unit_id')
+       then 'OK' else 'MISSING' end
+union all
+select 'department managers can approve',
+       case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'private' and p.proname = 'can_approve_line')
+       then 'OK' else 'MISSING' end
 union all
 select 'spend rule wired to transactions',
        case when exists (select 1 from pg_policies

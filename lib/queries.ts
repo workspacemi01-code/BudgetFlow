@@ -67,7 +67,7 @@ function toLine(r: Row): LineTotal {
 
 export async function getLineTotals(
   ctx: OrgContext,
-  scope: { departmentId?: string | null; brandId?: string | null } = {},
+  scope: { departmentId?: string | null; brandId?: string | null; unitId?: string | null } = {},
 ): Promise<LineTotal[]> {
   if (!ctx.period) return []
   const supabase = await createClient()
@@ -78,6 +78,7 @@ export async function getLineTotals(
     .eq("period_id", ctx.period.id)
   if (scope.departmentId) query = query.eq("department_id", scope.departmentId)
   if (scope.brandId) query = query.eq("brand_id", scope.brandId)
+  if (scope.unitId) query = query.eq("unit_id", scope.unitId)
   const result = await query
     .order("department_name")
     .order("brand_name", { nullsFirst: true })
@@ -176,6 +177,31 @@ export async function getBrands(
     departmentId: String(b.department_id),
     /* Absent means open: a unit is only closed when someone closes it. */
     officersCanSpend: b.officers_can_spend !== false,
+  }))
+}
+
+export interface UnitOption {
+  id: string
+  name: string
+  departmentId: string
+  officersCanSpend: boolean
+}
+
+/** Units, with the department they belong to, so a picker can narrow. */
+export async function getUnits(ctx: OrgContext): Promise<UnitOption[]> {
+  const supabase = await createClient()
+  const result = await supabase
+    .from("units")
+    .select("id, name, department_id, officers_can_spend")
+    .eq("org_id", ctx.org.id)
+    .is("archived_at", null)
+    .order("name")
+  return rows(result).map((u) => ({
+    id: String(u.id),
+    name: String(u.name),
+    departmentId: String(u.department_id),
+    /* Absent means open: a unit is only closed when someone closes it. */
+    officersCanSpend: u.officers_can_spend !== false,
   }))
 }
 
@@ -304,6 +330,7 @@ export interface SpendFilter {
   grain: Grain
   departmentId?: string | null
   brandId?: string | null
+  unitId?: string | null
 }
 
 /** Monday of the week a date falls in, as YYYY-MM-DD. */
@@ -347,6 +374,7 @@ export async function getSpendOverTime(ctx: OrgContext, filter: SpendFilter): Pr
 
   if (filter.departmentId) query = query.eq("department_id", filter.departmentId)
   if (filter.brandId) query = query.eq("brand_id", filter.brandId)
+  if (filter.unitId) query = query.eq("unit_id", filter.unitId)
 
   const buckets = new Map<string, MonthTotal>()
   for (const r of rows(await query)) {
@@ -403,7 +431,7 @@ export interface Member {
   status: "active" | "pending" | "suspended"
   departmentIds: string[]
   /** Units they are attached to. What makes a unit-scoped role usable. */
-  brandIds: string[]
+  unitIds: string[]
   /** Pending invitations only: the token in their link, and when it stops working. */
   inviteToken: string | null
   inviteExpiresAt: string | null
@@ -426,7 +454,7 @@ export async function getMembers(ctx: OrgContext): Promise<Member[]> {
   const result = await supabase
     .from("memberships")
     .select(
-      "id, user_id, invited_email, role, status, invite_token, invite_expires_at, membership_departments (department_id), membership_brands (brand_id)"
+      "id, user_id, invited_email, role, status, invite_token, invite_expires_at, membership_departments (department_id), membership_units (unit_id)"
     )
     .eq("org_id", ctx.org.id)
     .order("created_at")
@@ -444,7 +472,7 @@ export async function getMembers(ctx: OrgContext): Promise<Member[]> {
       role: m.role as Role,
       status: m.status as Member["status"],
       departmentIds: ((m.membership_departments ?? []) as Row[]).map((d) => String(d.department_id)),
-      brandIds: ((m.membership_brands ?? []) as Row[]).map((b) => String(b.brand_id)),
+      unitIds: ((m.membership_units ?? []) as Row[]).map((u) => String(u.unit_id)),
       inviteToken: m.status === "pending" ? str(m.invite_token) : null,
       inviteExpiresAt: m.status === "pending" ? str(m.invite_expires_at) : null,
     }

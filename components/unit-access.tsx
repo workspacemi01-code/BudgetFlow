@@ -13,7 +13,8 @@ export interface UnitOption {
   id: string
   name: string
   departmentId: string
-  departmentName: string
+  /** The department it sits in, so a bare unit name is placeable. */
+  path: string
   officersCanSpend: boolean
 }
 
@@ -21,7 +22,7 @@ export interface UnitMember {
   membershipId: string
   name: string
   role: Role
-  brandIds: string[]
+  unitIds: string[]
 }
 
 function Note({ state }: { state: FormState }) {
@@ -40,11 +41,9 @@ function Note({ state }: { state: FormState }) {
 export function MemberUnits({
   members,
   units,
-  unitLabel,
 }: {
   members: UnitMember[]
   units: UnitOption[]
-  unitLabel: string
 }) {
   const [state, action, pending] = useActionState(setMemberUnits, {} as FormState)
   const [selected, setSelected] = useState(members[0]?.membershipId ?? "")
@@ -81,10 +80,10 @@ export function MemberUnits({
       </div>
 
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">{unitLabel}s they work in</legend>
+        <legend className="text-sm font-medium">Units they work in</legend>
         <p className="text-sm text-muted-foreground">
-          They can see every {unitLabel.toLowerCase()} in the departments these sit in. These are
-          the ones they can act in.
+          They can see every unit in the departments these sit in. These are the ones they
+          can act in.
         </p>
         <div className="grid gap-1.5 sm:grid-cols-2">
           {units.map((u) => (
@@ -94,17 +93,17 @@ export function MemberUnits({
             >
               <input
                 type="checkbox"
-                name="brandIds"
+                name="unitIds"
                 value={u.id}
                 /* Keyed on the member so switching person resets the boxes to
                    that person's own units rather than keeping the last one's. */
-                defaultChecked={member?.brandIds.includes(u.id)}
+                defaultChecked={member?.unitIds.includes(u.id)}
                 key={`${selected}-${u.id}`}
                 className="mt-0.5"
               />
               <span className="min-w-0">
                 <span className="block font-medium">{u.name}</span>
-                <span className="block text-xs text-muted-foreground">{u.departmentName}</span>
+                <span className="block text-xs text-muted-foreground">{u.path}</span>
                 {!u.officersCanSpend && (
                   <span className="mt-1 block text-xs text-destructive">Closed to officers</span>
                 )}
@@ -131,18 +130,18 @@ export function MemberUnits({
  * Sosa budget", as a control rather than a deployment. It changes nothing else:
  * officers still see the unit, and every other role still spends against it.
  */
-export function UnitSpendRules({ units, unitLabel }: { units: UnitOption[]; unitLabel: string }) {
+export function UnitSpendRules({ units }: { units: UnitOption[] }) {
   const [state, action, pending] = useActionState(setUnitOfficerAccess, {} as FormState)
 
   if (units.length === 0) {
-    return <p className="text-sm text-muted-foreground">No {unitLabel.toLowerCase()}s yet.</p>
+    return <p className="text-sm text-muted-foreground">No units yet.</p>
   }
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        Officers spend only in the {unitLabel.toLowerCase()}s they are attached to. Closing one here
-        stops officers spending against it — they can still see it, and everyone else is unaffected.
+        Unit officers spend only in the units they are attached to. Closing one here stops them
+        spending against it — they can still see it, and everyone else is unaffected.
       </p>
 
       <ul className="divide-y rounded-md border">
@@ -151,7 +150,7 @@ export function UnitSpendRules({ units, unitLabel }: { units: UnitOption[]; unit
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">{u.name}</div>
               <div className="truncate text-xs text-muted-foreground">
-                {u.departmentName}
+                {u.path}
                 {" · "}
                 <span className={cn(!u.officersCanSpend && "text-destructive")}>
                   {u.officersCanSpend ? "Open to officers" : "Closed to officers"}
@@ -159,7 +158,7 @@ export function UnitSpendRules({ units, unitLabel }: { units: UnitOption[]; unit
               </div>
             </div>
             <form action={action}>
-              <input type="hidden" name="brandId" value={u.id} />
+              <input type="hidden" name="unitId" value={u.id} />
               <input type="hidden" name="allowed" value={u.officersCanSpend ? "false" : "true"} />
               <Button type="submit" variant="outline" size="sm" disabled={pending}>
                 {u.officersCanSpend ? "Close to officers" : "Open to officers"}

@@ -99,7 +99,7 @@ export async function inviteMember(_: FormState, formData: FormData): Promise<Fo
   const email = String(formData.get("email") ?? "").trim().toLowerCase()
   const role = String(formData.get("role") ?? "") as Role
   const departmentIds = formData.getAll("departmentIds").map(String)
-  const brandIds = formData.getAll("brandIds").map(String).filter(Boolean)
+  const unitIds = formData.getAll("unitIds").map(String).filter(Boolean)
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." }
   if (!invitableRoles(ctx.role).includes(role)) return { error: "Pick a role." }
   if (role === "dept_manager" && departmentIds.length === 0) {
@@ -107,8 +107,8 @@ export async function inviteMember(_: FormState, formData: FormData): Promise<Fo
   }
   /* A unit-scoped role with no units can see a department and act in none of
      it, which looks like the app is broken rather than like a setting. */
-  if ((role === "line_manager" || role === "officer") && brandIds.length === 0) {
-    return { error: `Pick at least one ${ctx.org.brand_label.toLowerCase()} for a ${ROLE_LABELS[role].toLowerCase()}.` }
+  if ((role === "line_manager" || role === "officer") && unitIds.length === 0) {
+    return { error: `Pick at least one unit for a ${ROLE_LABELS[role].toLowerCase()}.` }
   }
   if (email === ctx.user.email.toLowerCase()) return { error: "You're already a member of this organization." }
 
@@ -130,12 +130,13 @@ export async function inviteMember(_: FormState, formData: FormData): Promise<Fo
     if (scopeError) return { error: scopeError.message }
   }
 
-  /* Unit-scoped roles reach their department through their units, so the units
-     are the only assignment they need. */
-  if ((role === "line_manager" || role === "officer") && brandIds.length > 0) {
+  /* Unit-scoped roles reach their brand and department through their units, so
+     the units are the only assignment they need. An officer invited for Events
+     spends in Events, not across the brand above it. */
+  if ((role === "line_manager" || role === "officer") && unitIds.length > 0) {
     const { error: unitError } = await supabase
-      .from("membership_brands")
-      .insert(brandIds.map((brand_id) => ({ membership_id: data.id, brand_id, org_id: ctx.org.id })))
+      .from("membership_units")
+      .insert(unitIds.map((unit_id) => ({ membership_id: data.id, unit_id, org_id: ctx.org.id })))
     if (unitError) return { error: unitError.message }
   }
 
@@ -246,31 +247,31 @@ export async function setMemberUnits(_: FormState, formData: FormData): Promise<
   if (!isAdmin(ctx.role)) return { error: "Only owners and admins can change unit access." }
 
   const membershipId = String(formData.get("membershipId") ?? "")
-  const brandIds = formData.getAll("brandIds").map(String).filter(Boolean)
+  const unitIds = formData.getAll("unitIds").map(String).filter(Boolean)
   if (!membershipId) return { error: "Pick someone first." }
 
   const supabase = await createClient()
 
   /* Replace rather than merge: the checkboxes are the whole truth. */
   const { error: clearError } = await supabase
-    .from("membership_brands")
+    .from("membership_units")
     .delete()
     .eq("membership_id", membershipId)
     .eq("org_id", ctx.org.id)
   if (clearError) return { error: clearError.message }
 
-  if (brandIds.length > 0) {
+  if (unitIds.length > 0) {
     const { error } = await supabase
-      .from("membership_brands")
-      .insert(brandIds.map((brand_id) => ({ membership_id: membershipId, brand_id, org_id: ctx.org.id })))
+      .from("membership_units")
+      .insert(unitIds.map((unit_id) => ({ membership_id: membershipId, unit_id, org_id: ctx.org.id })))
     if (error) return { error: error.message }
   }
 
   revalidatePath("/settings")
   revalidatePath("/dashboard")
   return {
-    message: brandIds.length
-      ? `Saved — ${brandIds.length} ${brandIds.length === 1 ? "unit" : "units"}.`
+    message: unitIds.length
+      ? `Saved — ${unitIds.length} ${unitIds.length === 1 ? "unit" : "units"}.`
       : "Saved — no units. They can see the department but not act in it.",
   }
 }
@@ -286,15 +287,15 @@ export async function setUnitOfficerAccess(_: FormState, formData: FormData): Pr
   const ctx = await requireOrg()
   if (!isAdmin(ctx.role)) return { error: "Only owners and admins can change this." }
 
-  const brandId = String(formData.get("brandId") ?? "")
+  const unitId = String(formData.get("unitId") ?? "")
   const allowed = String(formData.get("allowed") ?? "") === "true"
-  if (!brandId) return { error: "Pick a unit first." }
+  if (!unitId) return { error: "Pick a unit first." }
 
   const supabase = await createClient()
   const { data, error } = await supabase
-    .from("brands")
+    .from("units")
     .update({ officers_can_spend: allowed })
-    .eq("id", brandId)
+    .eq("id", unitId)
     .eq("org_id", ctx.org.id)
     .select("name")
     .single()

@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CURRENCIES, formatDateTime, formatMoney } from "@/lib/format"
 import { MemberUnits, UnitSpendRules } from "@/components/unit-access"
-import { getAuditLog, getBrands, getDepartments, getMembers, type AuditEntry } from "@/lib/queries"
+import { getAuditLog, getDepartments, getMembers, getUnits, type AuditEntry } from "@/lib/queries"
 import { ROLE_LABELS, invitableRoles, isAdmin, isApprover } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
 import { inviteUrl, siteOrigin } from "@/lib/site"
@@ -52,22 +52,25 @@ function describe(entry: AuditEntry, currency: string): { what: string; detail?:
 export default async function SettingsPage() {
   const ctx = await requireOrg()
   const admin = isAdmin(ctx.role)
-  const [members, departments, brands, audit, origin] = await Promise.all([
+  const [members, departments, orgUnits, audit, origin] = await Promise.all([
     getMembers(ctx),
     getDepartments(ctx),
-    getBrands(ctx),
+    getUnits(ctx),
     isApprover(ctx.role) ? getAuditLog(ctx) : Promise.resolve([]),
     siteOrigin(),
   ])
   const departmentName = new Map(departments.map((d) => [d.id, d.name]))
   const unitLabel = ctx.org.brand_label || "Unit"
 
-  const units = brands.map((b) => ({
-    id: b.id,
-    name: b.name,
-    departmentId: b.departmentId,
-    departmentName: departmentName.get(b.departmentId) ?? "",
-    officersCanSpend: b.officersCanSpend,
+  /* A unit name alone ("Events") is not placeable, so each carries its path
+     down from the department. */
+  const units = orgUnits.map((u) => ({
+    id: u.id,
+    name: u.name,
+    departmentId: u.departmentId,
+    /* "Events" alone is not placeable when departments each have their own. */
+    path: departmentName.get(u.departmentId) ?? "",
+    officersCanSpend: u.officersCanSpend,
   }))
 
   /* Only the roles whose reach is a unit. A department manager is already
@@ -75,7 +78,7 @@ export default async function SettingsPage() {
      narrows them, which it does not. */
   const unitMembers = members
     .filter((m) => m.role === "line_manager" || m.role === "officer")
-    .map((m) => ({ membershipId: m.membershipId, name: m.name, role: m.role, brandIds: m.brandIds }))
+    .map((m) => ({ membershipId: m.membershipId, name: m.name, role: m.role, unitIds: m.unitIds }))
 
   const details = [
     { label: "Organization", value: ctx.org.name },
@@ -189,7 +192,7 @@ export default async function SettingsPage() {
                 <InviteForm
                   roles={invitableRoles(ctx.role)}
                   departments={departments.map((d) => ({ id: d.id, name: d.name }))}
-                  units={units.map((u) => ({ id: u.id, name: u.name, departmentName: u.departmentName }))}
+                  units={units.map((u) => ({ id: u.id, name: u.name, path: u.path }))}
                   unitLabel={unitLabel}
                 />
               </div>
@@ -202,27 +205,25 @@ export default async function SettingsPage() {
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>{unitLabel} access</CardTitle>
+              <CardTitle>Unit access</CardTitle>
               <CardDescription>
-                Which {unitLabel.toLowerCase()}s a unit manager may edit, and an officer may spend
-                in.
+                Which units a unit/line manager may edit, and a unit officer may spend in.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <MemberUnits members={unitMembers} units={units} unitLabel={unitLabel} />
+              <MemberUnits members={unitMembers} units={units} />
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Officer spending</CardTitle>
+              <CardTitle>Unit officer spending</CardTitle>
               <CardDescription>
-                Close a {unitLabel.toLowerCase()} to officers without changing anything else about
-                it.
+                Close a unit to unit officers without changing anything else about it.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <UnitSpendRules units={units} unitLabel={unitLabel} />
+              <UnitSpendRules units={units} />
             </CardContent>
           </Card>
         </div>
