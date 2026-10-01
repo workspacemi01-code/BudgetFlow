@@ -34,6 +34,8 @@ export interface Organization {
   currency: string
   fiscal_year_start: number
   brand_label: string
+  /** Named palette. "default" unless the org has its own. */
+  brand_theme: string
   allow_over_budget: boolean
 }
 
@@ -120,7 +122,8 @@ export async function requireUser(): Promise<SessionUser> {
   return user
 }
 
-const ORG_COLUMNS = "id, name, slug, plan, trial_ends_at, currency, fiscal_year_start, brand_label, allow_over_budget"
+const ORG_COLUMNS =
+  "id, name, slug, plan, trial_ends_at, currency, fiscal_year_start, brand_label, brand_theme, allow_over_budget"
 
 // One query: memberships with their org, the org's budget periods and any department scoping.
 const MEMBERSHIP_QUERY = `id, role, membership_departments (department_id),
