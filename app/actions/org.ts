@@ -88,10 +88,16 @@ export async function inviteMember(_: FormState, formData: FormData): Promise<Fo
   const email = String(formData.get("email") ?? "").trim().toLowerCase()
   const role = String(formData.get("role") ?? "") as Role
   const departmentIds = formData.getAll("departmentIds").map(String)
+  const brandIds = formData.getAll("brandIds").map(String).filter(Boolean)
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." }
   if (!invitableRoles(ctx.role).includes(role)) return { error: "Pick a role." }
   if (role === "dept_manager" && departmentIds.length === 0) {
     return { error: "Pick at least one department for a department manager." }
+  }
+  /* A unit-scoped role with no units can see a department and act in none of
+     it, which looks like the app is broken rather than like a setting. */
+  if ((role === "line_manager" || role === "officer") && brandIds.length === 0) {
+    return { error: `Pick at least one ${ctx.org.brand_label.toLowerCase()} for a ${ROLE_LABELS[role].toLowerCase()}.` }
   }
   if (email === ctx.user.email.toLowerCase()) return { error: "You're already a member of this organization." }
 
@@ -111,6 +117,15 @@ export async function inviteMember(_: FormState, formData: FormData): Promise<Fo
       .from("membership_departments")
       .insert(scoped.map((department_id) => ({ membership_id: data.id, department_id, org_id: ctx.org.id })))
     if (scopeError) return { error: scopeError.message }
+  }
+
+  /* Unit-scoped roles reach their department through their units, so the units
+     are the only assignment they need. */
+  if ((role === "line_manager" || role === "officer") && brandIds.length > 0) {
+    const { error: unitError } = await supabase
+      .from("membership_brands")
+      .insert(brandIds.map((brand_id) => ({ membership_id: data.id, brand_id, org_id: ctx.org.id })))
+    if (unitError) return { error: unitError.message }
   }
 
   const url = inviteUrl(await siteOrigin(), String(data.invite_token))
@@ -205,4 +220,80 @@ export async function removeMember(membershipId: string): Promise<FormState> {
   if (!data?.length) return { error: "That person couldn't be removed." }
   revalidatePath("/settings")
   return {}
+}
+
+/**
+ * Which units a person is attached to.
+ *
+ * This is what makes a unit manager or an officer usable: until a membership
+ * has units, both roles can see their department and do nothing in it. Sent as
+ * the full set rather than as add/remove, so the form always states the whole
+ * answer and a lost checkbox cannot leave a stale row behind.
+ */
+export async function setMemberUnits(_: FormState, formData: FormData): Promise<FormState> {
+  const ctx = await requireOrg()
+  if (!isAdmin(ctx.role)) return { error: "Only owners and admins can change unit access." }
+
+  const membershipId = String(formData.get("membershipId") ?? "")
+  const brandIds = formData.getAll("brandIds").map(String).filter(Boolean)
+  if (!membershipId) return { error: "Pick someone first." }
+
+  const supabase = await createClient()
+
+  /* Replace rather than merge: the checkboxes are the whole truth. */
+  const { error: clearError } = await supabase
+    .from("membership_brands")
+    .delete()
+    .eq("membership_id", membershipId)
+    .eq("org_id", ctx.org.id)
+  if (clearError) return { error: clearError.message }
+
+  if (brandIds.length > 0) {
+    const { error } = await supabase
+      .from("membership_brands")
+      .insert(brandIds.map((brand_id) => ({ membership_id: membershipId, brand_id, org_id: ctx.org.id })))
+    if (error) return { error: error.message }
+  }
+
+  revalidatePath("/settings")
+  revalidatePath("/dashboard")
+  return {
+    message: brandIds.length
+      ? `Saved — ${brandIds.length} ${brandIds.length === 1 ? "unit" : "units"}.`
+      : "Saved — no units. They can see the department but not act in it.",
+  }
+}
+
+/**
+ * Whether officers may spend against a unit.
+ *
+ * This is the Sosa rule as a control rather than a deployment: any unit can be
+ * closed to officers, and closing one leaves everything else about it alone —
+ * officers still see it, and every other role still spends against it.
+ */
+export async function setUnitOfficerAccess(_: FormState, formData: FormData): Promise<FormState> {
+  const ctx = await requireOrg()
+  if (!isAdmin(ctx.role)) return { error: "Only owners and admins can change this." }
+
+  const brandId = String(formData.get("brandId") ?? "")
+  const allowed = String(formData.get("allowed") ?? "") === "true"
+  if (!brandId) return { error: "Pick a unit first." }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("brands")
+    .update({ officers_can_spend: allowed })
+    .eq("id", brandId)
+    .eq("org_id", ctx.org.id)
+    .select("name")
+    .single()
+  if (error) return { error: error.message }
+
+  revalidatePath("/settings")
+  revalidatePath("/dashboard")
+  return {
+    message: allowed
+      ? `Officers can spend against ${data.name} again.`
+      : `Officers can no longer spend against ${data.name}. They can still see it.`,
+  }
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Plus } from "lucide-react"
 
+import { DashboardFilters } from "@/components/dashboard-filters"
 import { DepartmentList, DepartmentTable } from "@/components/department-table"
 import { GetStarted } from "@/components/get-started"
 import { MonthlyChart } from "@/components/monthly-chart"
@@ -11,29 +12,67 @@ import { SpendLegend, UtilBar } from "@/components/util-bar"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate, formatMoney, formatPercent } from "@/lib/format"
-import { getDepartmentSummaries, getLineTotals, getMonthlySummary, getTransactions, totalsOf } from "@/lib/queries"
-import { canRaiseSpend } from "@/lib/roles"
+import {
+  getBrands,
+  getDepartmentSummaries,
+  getDepartments,
+  getLineTotals,
+  getSpendOverTime,
+  getTransactions,
+  totalsOf,
+  type Grain,
+} from "@/lib/queries"
+import { canFilterDepartments, canRaiseSpend } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "Dashboard" }
 
-export default async function DashboardPage() {
+const GRAINS: Grain[] = ["week", "month", "year"]
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   const ctx = await requireOrg()
   const currency = ctx.org.currency
   const money = (value: number, compact = false) => formatMoney(value, currency, { compact })
 
-  const [departments, lines, months, recent] = await Promise.all([
+  const params = await searchParams
+  const one = (key: string) => {
+    const value = params[key]
+    return (Array.isArray(value) ? value[0] : value) || ""
+  }
+  /* Anything else in the query string is somebody editing the URL, so fall
+     back rather than trusting it into a query. */
+  const rawGrain = one("grain")
+  const grain: Grain = (GRAINS as string[]).includes(rawGrain) ? (rawGrain as Grain) : "month"
+  const departmentId = one("department") || null
+  const brandId = one("unit") || null
+
+  const [departments, lines, months, recent, allDepartments, allUnits] = await Promise.all([
     getDepartmentSummaries(ctx),
-    getLineTotals(ctx),
-    getMonthlySummary(ctx),
+    getLineTotals(ctx, { departmentId, brandId }),
+    getSpendOverTime(ctx, { grain, departmentId, brandId }),
     getTransactions(ctx, { limit: 5 }),
+    getDepartments(ctx),
+    getBrands(ctx),
   ])
+
+  /* A departmental account — someone who only reaches one department — is
+     told which one, since "Rite Foods Nigeria · FY2026" alone does not say
+     whose figures these are. RLS already limits the list, so one entry means
+     one department. */
+  const soleDepartment = departments.length === 1 ? departments[0].name : null
+  const scopedDepartment = departmentId
+    ? (allDepartments.find((d) => d.id === departmentId)?.name ?? null)
+    : soleDepartment
 
   const header = (
     <PageHeader
       title="Dashboard"
-      description={[ctx.org.name, ctx.period?.name].filter(Boolean).join(" · ")}
+      description={[ctx.org.name, scopedDepartment, ctx.period?.name].filter(Boolean).join(" · ")}
       actions={
         canRaiseSpend(ctx.role) && lines.length > 0 ? (
           <Link href="/transactions/new" className={cn(buttonVariants(), "h-10 px-4")}>
@@ -96,11 +135,25 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
+      <Card className="mt-4">
+        <CardContent>
+          <DashboardFilters
+            departments={allDepartments.map((d) => ({ id: d.id, name: d.name }))}
+            units={allUnits.map((b) => ({ id: b.id, name: b.name, departmentId: b.departmentId }))}
+            unitLabel={ctx.org.brand_label || "Unit"}
+            showDepartments={canFilterDepartments(ctx.role) && allDepartments.length > 1}
+          />
+        </CardContent>
+      </Card>
+
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Monthly spend</CardTitle>
-            <CardDescription>Spent and committed, by transaction month</CardDescription>
+            <CardTitle>{grain === "week" ? "Weekly" : grain === "year" ? "Yearly" : "Monthly"} spend</CardTitle>
+            <CardDescription>
+              Spent and committed, by transaction {grain}
+              {scopedDepartment && ` · ${scopedDepartment}`}
+            </CardDescription>
             <CardAction>
               <SpendLegend />
             </CardAction>
