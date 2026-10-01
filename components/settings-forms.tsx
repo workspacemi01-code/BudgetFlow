@@ -57,10 +57,24 @@ export function OrgSettingsForm({
   )
 }
 
-export function InviteForm({ roles, departments }: { roles: Role[]; departments: { id: string; name: string }[] }) {
+export function InviteForm({
+  roles,
+  departments,
+  units = [],
+  unitLabel = "Unit",
+}: {
+  roles: Role[]
+  departments: { id: string; name: string }[]
+  units?: { id: string; name: string; departmentName: string }[]
+  unitLabel?: string
+}) {
   const [state, action] = useActionState(inviteMember, initial)
   const [role, setRole] = useState<Role>("finance")
   const scoped = role === "dept_manager" || role === "viewer"
+  /* A unit-scoped role reaches its department through its units, so units are
+     the only assignment it needs — and without one it can act nowhere, which
+     looks like a broken account rather than a setting. */
+  const unitScoped = role === "line_manager" || role === "officer"
 
   return (
     <form action={action} className="grid gap-4">
@@ -84,6 +98,30 @@ export function InviteForm({ roles, departments }: { roles: Role[]; departments:
           </select>
         </Field>
       </div>
+      {unitScoped && (
+        <fieldset className="grid gap-2">
+          <legend className="mb-1 text-sm font-medium">
+            {unitLabel}s they work in
+          </legend>
+          {units.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Add {unitLabel.toLowerCase()}s to a department first.
+            </p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {units.map((u) => (
+                <label key={u.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="brandIds" value={u.id} className="size-4 accent-[var(--primary)]" />
+                  <span className="min-w-0">
+                    {u.name}
+                    <span className="block text-xs text-muted-foreground">{u.departmentName}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </fieldset>
+      )}
       {scoped && (
         <fieldset className="grid gap-2">
           <legend className="mb-1 text-sm font-medium">

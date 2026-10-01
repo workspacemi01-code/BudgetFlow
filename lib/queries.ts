@@ -160,15 +160,23 @@ export async function getCategories(ctx: OrgContext): Promise<Option[]> {
   return rows(result).map((c) => ({ id: String(c.id), name: String(c.name) }))
 }
 
-export async function getBrands(ctx: OrgContext): Promise<(Option & { departmentId: string })[]> {
+export async function getBrands(
+  ctx: OrgContext,
+): Promise<(Option & { departmentId: string; officersCanSpend: boolean })[]> {
   const supabase = await createClient()
   const result = await supabase
     .from("brands")
-    .select("id, name, department_id")
+    .select("id, name, department_id, officers_can_spend")
     .eq("org_id", ctx.org.id)
     .is("archived_at", null)
     .order("name")
-  return rows(result).map((b) => ({ id: String(b.id), name: String(b.name), departmentId: String(b.department_id) }))
+  return rows(result).map((b) => ({
+    id: String(b.id),
+    name: String(b.name),
+    departmentId: String(b.department_id),
+    /* Absent means open: a unit is only closed when someone closes it. */
+    officersCanSpend: b.officers_can_spend !== false,
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -394,6 +402,8 @@ export interface Member {
   role: Role
   status: "active" | "pending" | "suspended"
   departmentIds: string[]
+  /** Units they are attached to. What makes a unit-scoped role usable. */
+  brandIds: string[]
   /** Pending invitations only: the token in their link, and when it stops working. */
   inviteToken: string | null
   inviteExpiresAt: string | null
@@ -416,7 +426,7 @@ export async function getMembers(ctx: OrgContext): Promise<Member[]> {
   const result = await supabase
     .from("memberships")
     .select(
-      "id, user_id, invited_email, role, status, invite_token, invite_expires_at, membership_departments (department_id)"
+      "id, user_id, invited_email, role, status, invite_token, invite_expires_at, membership_departments (department_id), membership_brands (brand_id)"
     )
     .eq("org_id", ctx.org.id)
     .order("created_at")
@@ -434,6 +444,7 @@ export async function getMembers(ctx: OrgContext): Promise<Member[]> {
       role: m.role as Role,
       status: m.status as Member["status"],
       departmentIds: ((m.membership_departments ?? []) as Row[]).map((d) => String(d.department_id)),
+      brandIds: ((m.membership_brands ?? []) as Row[]).map((b) => String(b.brand_id)),
       inviteToken: m.status === "pending" ? str(m.invite_token) : null,
       inviteExpiresAt: m.status === "pending" ? str(m.invite_expires_at) : null,
     }
