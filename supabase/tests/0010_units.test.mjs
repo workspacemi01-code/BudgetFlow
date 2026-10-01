@@ -298,5 +298,49 @@ const [otherAfter] = await svc(`select status from public.transactions where id 
 ok('a department manager CANNOT approve another department\u2019s spend',
    otherAfter.status === 'pending', `(status is now ${otherAfter.status})`)
 
+// ---------------------------------------------------------------------------
+console.log('\nWhat each role is offered to filter by')
+// ---------------------------------------------------------------------------
+
+/* The dashboard offers whatever the department and unit lists come back with,
+   because both are RLS-scoped. So the question worth asking is what each role
+   actually gets back — that is the filter they will see. */
+
+const deptsVisible = async (user) =>
+  (await as(user, `select name from public.departments order by name`)).map((d) => d.name)
+const unitsVisible = async (user) =>
+  (await as(user, `select name from public.units order by name`)).map((u) => u.name)
+
+const ownerDepts = await deptsVisible(U.owner)
+ok('a super admin is offered every department',
+   ownerDepts.includes('Marketing') && ownerDepts.includes('Sales'),
+   `(got ${ownerDepts.join(', ')})`)
+
+const mgrDepts = await deptsVisible(U.deptmgr)
+ok('a department manager is offered only their own',
+   mgrDepts.length === 1 && mgrDepts[0] === 'Marketing', `(got ${mgrDepts.join(', ')})`)
+
+const officerDepts = await deptsVisible(U.eventsOfficer)
+ok('a unit officer is offered the department their unit sits in',
+   officerDepts.length === 1 && officerDepts[0] === 'Marketing', `(got ${officerDepts.join(', ')})`)
+
+const officerUnits = await unitsVisible(U.eventsOfficer)
+ok('and every unit in it, not only their own — the brief grants them the view',
+   officerUnits.includes('Events') && officerUnits.includes('Creative Unit') &&
+   officerUnits.includes('Sosa Brand'),
+   `(got ${officerUnits.join(', ')})`)
+
+const mgrUnits = await unitsVisible(U.deptmgr)
+ok('a department manager is offered every unit in their department',
+   mgrUnits.length >= 4, `(got ${mgrUnits.length})`)
+
+/* Giving the manager a second department must widen the filter, which is the
+   case the old role check got wrong. */
+await svc(`insert into public.membership_departments (membership_id, department_id, org_id)
+           values ($1, $2, $3)`, [mem.deptmgr.id, dept2.id, org.id])
+const widened = await deptsVisible(U.deptmgr)
+ok('a department manager running two departments is offered both',
+   widened.length === 2, `(got ${widened.join(', ')})`)
+
 console.log(`\n${passed} passed, ${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

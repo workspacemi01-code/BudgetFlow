@@ -59,8 +59,18 @@ export const canManageLines = (role: Role) => role !== "viewer" && role !== "off
 /** Roles whose view is scoped to particular units rather than whole departments. */
 export const isUnitScoped = (role: Role) => role === "line_manager" || role === "officer"
 
-/** Who may filter across the whole organisation, department by department. */
-export const canFilterDepartments = (role: Role) => isApprover(role)
+/*
+ * There is deliberately no role check for the department filter.
+ *
+ * The list the dashboard offers comes back through RLS (departments_select
+ * uses can_view_department), so it already holds exactly the departments this
+ * person may see — one for a departmental account, all of them for a super
+ * admin, their own for a department manager who runs several. Gating it on
+ * role as well meant a department manager with two departments could not
+ * switch between them, while the list sitting right there held both.
+ *
+ * The rule is simply: more than one to choose from, so offer the choice.
+ */
 
 
 /**

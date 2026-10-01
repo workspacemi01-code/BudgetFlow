@@ -22,7 +22,7 @@ import {
   totalsOf,
   type Grain,
 } from "@/lib/queries"
-import { canFilterDepartments, canRaiseSpend } from "@/lib/roles"
+import { canRaiseSpend } from "@/lib/roles"
 import { requireOrg } from "@/lib/session"
 import { cn } from "@/lib/utils"
 
@@ -140,7 +140,7 @@ export default async function DashboardPage({
           <DashboardFilters
             departments={allDepartments.map((d) => ({ id: d.id, name: d.name }))}
             units={allUnits.map((u) => ({ id: u.id, name: u.name, parentId: u.departmentId }))}
-            showDepartments={canFilterDepartments(ctx.role) && allDepartments.length > 1}
+            showDepartments={allDepartments.length > 1}
           />
         </CardContent>
       </Card>
