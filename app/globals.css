@@ -232,3 +232,33 @@
   --sidebar-accent-foreground: oklch(0.97 0.01 260);
   --sidebar-ring: oklch(0.68 0.23 28.8);
 }
+
+/*
+ * A dark sidebar has to restate the general tokens, not just its own.
+ *
+ * The sidebar paints itself with --sidebar, but everything inside it — the org
+ * switcher, the nav links, the trial note — is built from the page-level
+ * tokens: --foreground, --muted-foreground, --background, --border. Those are
+ * chosen for a near-white page. Dropped onto navy, --muted-foreground measured
+ * 4.11:1, which is why the sidebar read as dull and washed out.
+ *
+ * Remapping the tokens inside the element fixes every child at once, without
+ * touching a single component. Measured against #0A1F44:
+ *
+ *   foreground        #F2F6FA   14.96:1
+ *   muted-foreground  #9FB4CC    7.64:1
+ *   primary (as text) #FF383E    4.56:1  — the brand red itself is 4.10:1 here,
+ *                                          so the sidebar uses a lighter tint
+ *                                          of the same hue rather than a red
+ *                                          nobody can read.
+ */
+[data-brand="crimson"] aside {
+  --background: oklch(0.29 0.065 260);
+  --foreground: oklch(0.969 0.008 255);
+  --muted: oklch(0.32 0.07 260);
+  --muted-foreground: oklch(0.762 0.047 251);
+  --border: oklch(0.34 0.07 260);
+  --primary: oklch(0.676 0.197 23.5);
+  --accent: oklch(0.32 0.085 260);
+  --accent-foreground: oklch(0.99 0 0);
+}
