@@ -5,6 +5,7 @@ import { ArrowRight, ChevronRight, TrendingDown } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { formatMoney } from "@/lib/format"
+import { PeriodEnded } from "@/components/personal/period-ended"
 import { dailyAllowance, dayLabel, isBudgeted, type BudgetTotals, type PersonalLine } from "@/lib/personal-math"
 import type { PersonalBudget, PersonalEntry } from "@/lib/personal"
 import { cn } from "@/lib/utils"
@@ -33,11 +34,33 @@ export function HomeScreen({
   currency: string
 }) {
   const money = (v: number) => formatMoney(v, currency)
+
+  /* Compared as plain YYYY-MM-DD strings, which is how the dates arrive and
+     how they sort — turning them into Date objects only invites a timezone to
+     decide whether the month has ended. */
+  const today = new Date().toISOString().slice(0, 10)
+  const ended = budget.endDate < today
+
+  const nextName = (() => {
+    const [y, m] = budget.startDate.split("-").map(Number)
+    if (budget.cadence === "yearly") return String(y + 1)
+    const d = new Date(Date.UTC(y, m, 1))
+    return d.toLocaleDateString("en", { month: "long", year: "numeric", timeZone: "UTC" })
+  })()
   const allowance = totals.hasBudget ? dailyAllowance(totals.remaining, budget.endDate) : null
   const over = totals.hasBudget && totals.remaining < 0
 
   return (
     <div className="space-y-4">
+      {ended && (
+        <PeriodEnded
+          budgetName={budget.name}
+          cadence={budget.cadence}
+          nextName={nextName}
+          currency={currency}
+        />
+      )}
+
       <Headline
         budget={budget}
         totals={totals}
