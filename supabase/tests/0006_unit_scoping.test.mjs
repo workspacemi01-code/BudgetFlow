@@ -21,6 +21,7 @@ const MIGRATIONS = [
   '0005_unit_roles_enum.sql',
   '0006_unit_scoping.sql',
   '0007_daily_spend.sql',
+  '0009_unit_table_grants.sql',
 ].map((f) => new URL(`../migrations/${f}`, import.meta.url))
 
 const SUPABASE_STUB = `
@@ -67,7 +68,7 @@ const svc = async (sql, params = []) => (await db.query(sql, params)).rows
 console.log('Applying migrations…')
 await db.exec(SUPABASE_STUB)
 for (const file of MIGRATIONS) await db.exec(readFileSync(file, 'utf8'))
-console.log('  ✓ 0001 → 0007 applied cleanly\n')
+console.log('  ✓ 0001 → 0009 applied cleanly\n')
 
 for (const u of Object.values(U))
   await svc(`insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)`,
@@ -227,6 +228,45 @@ try {
   creativeInsertWorked = true
 } catch (e) { console.log(`      (creative insert failed: ${e.message})`) }
 ok('RLS allows the officer writing a transaction against their own unit', creativeInsertWorked)
+
+// ---------------------------------------------------------------------------
+console.log('\nThe app can actually reach these tables')
+// ---------------------------------------------------------------------------
+
+/* The permission functions are security definer, so they read these tables as
+   the definer and never touch the caller's grant. Only a query made AS the
+   signed-in user does — which is what the app makes, and what nothing here
+   exercised until the Settings page failed with "permission denied for table
+   membership_brands". A table can have perfect row-level policies and no
+   privilege to be read at all. */
+let readable = true
+try {
+  await as(U.owner, `select membership_id, brand_id from public.membership_brands limit 1`)
+} catch (e) {
+  readable = false
+  console.log(`      (${e.message})`)
+}
+ok('a signed-in user can read membership_brands', readable)
+
+let writable = true
+try {
+  await as(U.owner,
+    `insert into public.membership_brands (membership_id, brand_id, org_id) values ($1, $2, $3)`,
+    [mem.deptmgr.id, sosa.id, org.id])
+} catch (e) {
+  writable = false
+  console.log(`      (${e.message})`)
+}
+ok('an admin can attach someone to a unit from the app', writable)
+
+let viewReadable = true
+try {
+  await as(U.owner, `select day, spent from public.v_daily_spend limit 1`)
+} catch (e) {
+  viewReadable = false
+  console.log(`      (${e.message})`)
+}
+ok('a signed-in user can read v_daily_spend', viewReadable)
 
 // ---------------------------------------------------------------------------
 console.log('\nThe daily spend view the dashboard filters on')
