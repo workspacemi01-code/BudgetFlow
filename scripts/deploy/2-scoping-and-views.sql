@@ -1,3 +1,20 @@
+-- ============================================================================
+--  BudgetFlow — STEP 2 of 2
+--
+--  Run only after step 1 has finished.
+--
+--  Adds: unit-level membership, the officer spending rule, the daily spend
+--  view the dashboard filters on, and a per-organisation palette column.
+--
+--  Safe to re-run — every object uses `if not exists` or `create or replace`.
+--  Nothing existing is changed: every unit defaults to open to officers, and
+--  every organisation defaults to the standard palette, so nobody loses
+--  access or changes colour until you say so.
+-- ============================================================================
+
+
+-- ---------------- 0006_unit_scoping.sql ----------------
+
 -- Unit-level roles, part two: scoping, and the rules that go with it.
 --
 -- Until now a member was scoped to departments only, so "this person runs the
@@ -289,3 +306,107 @@ drop policy if exists transactions_update on public.transactions;
 create policy transactions_update on public.transactions for update to authenticated
   using (private.can_spend_line(budget_line_id))
   with check (private.can_spend_line(budget_line_id));
+
+
+-- ---------------- 0007_daily_spend.sql ----------------
+
+-- Spend by day, by unit.
+--
+-- v_monthly_summary is grouped by month and carries no brand, so it cannot
+-- answer either half of what the dashboard now needs: a week view, and a
+-- filter down to a single unit. Rather than add a second monthly view beside
+-- it, this groups one level finer than the finest thing asked for — by day —
+-- and the application folds days into weeks, months or years.
+--
+-- Grouping by day rather than returning raw transactions matters: a year of a
+-- department's spend is thousands of rows, and the dashboard was already slow.
+-- Distinct (department, unit, day) is a few hundred at most.
+--
+-- security_invoker, like every other view here, so a line manager sees exactly
+-- the units their membership allows and no more.
+
+create or replace view public.v_daily_spend
+with (security_invoker = true)
+as
+select
+  t.org_id,
+  t.period_id,
+  t.department_id,
+  t.department_name,
+  t.brand_id,
+  t.brand_name,
+  t.txn_date::date                           as day,
+  count(*)                                   as transaction_count,
+  sum(t.spent_amount)::numeric(18, 2)        as spent,
+  sum(t.committed_amount)::numeric(18, 2)    as committed
+from public.v_transactions t
+where t.status not in ('draft', 'rejected', 'voided')
+group by
+  t.org_id, t.period_id, t.department_id, t.department_name,
+  t.brand_id, t.brand_name, t.txn_date::date;
+
+comment on view public.v_daily_spend is
+  'Spend and commitment per day per unit. The dashboard folds these into weeks, months or years.';
+
+grant select on public.v_daily_spend to authenticated;
+
+
+-- ---------------- 0008_org_brand_theme.sql ----------------
+
+-- A brand palette per organisation.
+--
+-- The first attempt at this painted the whole product in one customer's
+-- colours, which was wrong twice over: every other organisation inherited a
+-- palette that is not theirs, and because the brand colour was red, an
+-- over-budget warning stopped standing out — the page was already red
+-- everywhere, so "you have overspent" looked like every button on it.
+--
+-- So the palette belongs to the organisation, and a named theme rather than a
+-- free hex: a hex column would let anyone set a colour that fails contrast
+-- against white text, or that collides with the red reserved for warnings.
+-- Each named theme is tuned once, including its warning colour.
+
+alter table public.organizations
+  add column if not exists brand_theme text not null default 'default';
+
+alter table public.organizations
+  drop constraint if exists organizations_brand_theme_check;
+
+alter table public.organizations
+  add constraint organizations_brand_theme_check
+  check (brand_theme in ('default', 'crimson'));
+
+comment on column public.organizations.brand_theme is
+  'Named palette for this org. default = teal; crimson = red with navy. Each theme keeps its warning colour distinct from its brand colour.';
+
+
+-- ============================================================================
+--  Verification — every row should read OK.
+-- ============================================================================
+
+select 'roles exist' as check,
+       case when count(*) = 2 then 'OK' else 'MISSING' end as result
+from   unnest(enum_range(null::public.org_role)) r
+where  r::text in ('line_manager', 'officer')
+union all
+select 'membership_brands table',
+       case when to_regclass('public.membership_brands') is not null then 'OK' else 'MISSING' end
+union all
+select 'brands.officers_can_spend',
+       case when exists (select 1 from information_schema.columns
+         where table_schema='public' and table_name='brands' and column_name='officers_can_spend')
+       then 'OK' else 'MISSING' end
+union all
+select 'organizations.brand_theme',
+       case when exists (select 1 from information_schema.columns
+         where table_schema='public' and table_name='organizations' and column_name='brand_theme')
+       then 'OK' else 'MISSING' end
+union all
+select 'v_daily_spend view',
+       case when to_regclass('public.v_daily_spend') is not null then 'OK' else 'MISSING' end
+union all
+select 'spend rule wired to transactions',
+       case when exists (select 1 from pg_policies
+         where schemaname='public' and tablename='transactions'
+           and policyname='transactions_insert' and with_check like '%can_spend_line%')
+       then 'OK' else 'STILL ON can_edit_line' end;

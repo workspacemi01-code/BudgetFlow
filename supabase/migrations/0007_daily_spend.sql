@@ -13,7 +13,7 @@
 -- security_invoker, like every other view here, so a line manager sees exactly
 -- the units their membership allows and no more.
 
-create view public.v_daily_spend
+create or replace view public.v_daily_spend
 with (security_invoker = true)
 as
 select

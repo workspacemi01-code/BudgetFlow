@@ -35,9 +35,7 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
-  --color-brand: var(--brand);
-  --color-navy: var(--navy);
-  --color-navy-deep: var(--navy-deep);
+  --color-brand: var(--brand, var(--primary));
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -51,21 +49,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/*
- * Brand: #FF0A11 with navy blue.
- *
- * Two deliberate departures from the literal brief, both measurable:
- *
- * 1. Buttons use oklch(0.589 0.241 28.8) — #EA0007 — not #FF0A11 itself. White
- *    on #FF0A11 measures 3.96:1, which fails AA for text at button size. This
- *    is the darkest red on the same hue that clears 4.5:1, and beside the brand
- *    red it reads as the same colour. --brand holds the exact value for marks,
- *    bars and borders, where contrast rules do not apply.
- *
- * 2. The chart keeps navy for spend and amber for committed. Red is spent on
- *    actions and on over-budget warnings; making the spend bars red too would
- *    leave "money went out" and "you have a problem" looking identical.
- */
+/* Brand: deep teal primary; amber marks "committed" money. */
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -73,75 +57,66 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.589 0.241 28.8);
+  --primary: oklch(0.52 0.105 182);
   --primary-foreground: oklch(0.985 0 0);
-  /* The brand red exactly, for graphics rather than text backgrounds. */
-  --brand: oklch(0.630 0.255 28.5);
-  --navy: oklch(0.247 0.075 260.8);
-  --navy-deep: oklch(0.204 0.056 260.3);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.52 0 0);
-  --accent: oklch(0.96 0.03 28.5);
-  --accent-foreground: oklch(0.42 0.18 28.8);
-  /* Warnings stay distinct from the brand: a deeper, less saturated red, so
-     "over budget" is not the same colour as every button on the page. */
-  --destructive: oklch(0.49 0.19 25);
+  --accent: oklch(0.96 0.02 182);
+  --accent-foreground: oklch(0.3 0.06 182);
+  --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.9 0 0);
-  --ring: oklch(0.630 0.255 28.5);
-  --chart-1: oklch(0.247 0.075 260.8);
+  --ring: oklch(0.62 0.09 182);
+  --chart-1: oklch(0.52 0.105 182);
   --chart-2: oklch(0.83 0.16 84);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.247 0.075 260.8);
-  --sidebar-foreground: oklch(0.97 0.01 260);
-  --sidebar-primary: oklch(0.630 0.255 28.5);
+  --sidebar: oklch(0.985 0.003 182);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.52 0.105 182);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.32 0.085 260);
-  --sidebar-accent-foreground: oklch(0.99 0 0);
-  --sidebar-border: oklch(0.33 0.07 260);
-  --sidebar-ring: oklch(0.630 0.255 28.5);
+  --sidebar-accent: oklch(0.95 0.025 182);
+  --sidebar-accent-foreground: oklch(0.36 0.07 182);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.62 0.09 182);
 }
 
 .dark {
-  --brand: oklch(0.68 0.23 28.8);
-  --navy: oklch(0.247 0.075 260.8);
-  --navy-deep: oklch(0.204 0.056 260.3);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.68 0.23 28.8);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.74 0.12 180);
+  --primary-foreground: oklch(0.2 0.03 182);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.32 0.09 28.5);
-  --accent-foreground: oklch(0.96 0.02 28.5);
-  --destructive: oklch(0.62 0.2 25);
+  --accent: oklch(0.3 0.04 182);
+  --accent-foreground: oklch(0.95 0.02 182);
+  --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.68 0.23 28.8);
-  --chart-1: oklch(0.62 0.13 260);
+  --ring: oklch(0.6 0.09 182);
+  --chart-1: oklch(0.74 0.12 180);
   --chart-2: oklch(0.8 0.15 84);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.204 0.056 260.3);
+  --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.68 0.23 28.8);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.30 0.08 260);
-  --sidebar-accent-foreground: oklch(0.97 0.01 260);
+  --sidebar-primary: oklch(0.74 0.12 180);
+  --sidebar-primary-foreground: oklch(0.2 0.03 182);
+  --sidebar-accent: oklch(0.3 0.04 182);
+  --sidebar-accent-foreground: oklch(0.95 0.02 182);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.68 0.23 28.8);
+  --sidebar-ring: oklch(0.6 0.09 182);
 }
 
 @layer base {
@@ -193,4 +168,67 @@
   .bf-skeleton {
     animation: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * Per-organisation palettes.
+ *
+ * Applied as a data attribute on <html> from the organisation's brand_theme,
+ * so one customer's colours never reach another's account. Everything not
+ * listed here keeps the default palette above.
+ *
+ * The rule each theme must hold to: --destructive stays visibly different from
+ * --primary. Painting a product in its brand red and then warning in red means
+ * an overspent line looks exactly like every button on the page, which is how
+ * the first version of this went wrong.
+ * ------------------------------------------------------------------------- */
+
+/* Crimson — #FF0A11 with navy blue. */
+[data-brand="crimson"] {
+  /* #EA0007, not #FF0A11: white on the brand red measures 3.96:1, which fails
+     AA at button text size. This is the darkest red on the same hue that
+     clears 4.5:1, and reads as the same colour beside it. */
+  --primary: oklch(0.589 0.241 28.8);
+  --primary-foreground: oklch(0.985 0 0);
+  /* The exact brand red, for marks and bars where contrast rules do not apply. */
+  --brand: oklch(0.630 0.255 28.5);
+  --navy: oklch(0.247 0.075 260.8);
+  --accent: oklch(0.96 0.03 28.5);
+  --accent-foreground: oklch(0.42 0.18 28.8);
+  --ring: oklch(0.630 0.255 28.5);
+
+  /* Warnings must not be the brand colour. A deep maroon reads as trouble
+     against a page whose buttons are bright red, where another bright red
+     would simply disappear into them. */
+  --destructive: oklch(0.42 0.14 20);
+
+  /* Spend is navy, committed stays amber. Red bars would make "money went
+     out" and "you have a problem" the same colour. */
+  --chart-1: oklch(0.247 0.075 260.8);
+
+  --sidebar: oklch(0.247 0.075 260.8);
+  --sidebar-foreground: oklch(0.97 0.01 260);
+  --sidebar-primary: oklch(0.630 0.255 28.5);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.32 0.085 260);
+  --sidebar-accent-foreground: oklch(0.99 0 0);
+  --sidebar-border: oklch(0.33 0.07 260);
+  --sidebar-ring: oklch(0.630 0.255 28.5);
+}
+
+.dark[data-brand="crimson"],
+[data-brand="crimson"] .dark {
+  --primary: oklch(0.68 0.23 28.8);
+  --primary-foreground: oklch(0.985 0 0);
+  --brand: oklch(0.68 0.23 28.8);
+  --accent: oklch(0.32 0.09 28.5);
+  --accent-foreground: oklch(0.96 0.02 28.5);
+  --ring: oklch(0.68 0.23 28.8);
+  --destructive: oklch(0.55 0.16 20);
+  --chart-1: oklch(0.62 0.13 260);
+  --sidebar: oklch(0.204 0.056 260.3);
+  --sidebar-primary: oklch(0.68 0.23 28.8);
+  --sidebar-accent: oklch(0.30 0.08 260);
+  --sidebar-accent-foreground: oklch(0.97 0.01 260);
+  --sidebar-ring: oklch(0.68 0.23 28.8);
 }
